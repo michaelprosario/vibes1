@@ -60,6 +60,7 @@
         let levelStartTime = 0;
         let levelFinishTime = 0;
         let highScores = [];
+        let mouseWasPressed = false;
 
         // Images and animations
         let playerImg, playerDigImg, playerClimbImg;
@@ -1380,7 +1381,7 @@
             text(label, x, y);
             
             // Register click handler
-            if (isHovered && mouseIsPressed && !pmouseIsPressed) {
+            if (isHovered && mouseIsPressed && !mouseWasPressed) {
                 onClick();
             }
         }
@@ -1427,6 +1428,9 @@
                     drawLevelSelectScene();
                     break;
             }
+            
+            // Update mouseWasPressed for the next frame
+            mouseWasPressed = mouseIsPressed;
         }
 
         function keyPressed() {
@@ -1554,29 +1558,29 @@
             levels = [
                 // Level 1 - Tutorial
                 new Level({
-                    name: "Tutorial",
-                    theme: "default",
-                    difficulty: 1,
-                    timeLimit: 120,
-                    layout: [
-                        "####################",
-                        "#                  #",
-                        "#  T   T     T     #",
-                        "#  #   #     #     #",
-                        "#                  #",
-                        "#           H      #",
-                        "#           H      #",
-                        "#  X   X    H      #",
-                        "#  D   D    H      #",
-                        "#  #################",
-                        "#                  #",
-                        "#                  #",
-                        "#       P          #",
-                        "#  DDDDDDDDDDDD    #",
-                        "#  ############    #",
-                        "############ E #####"
-                    ]
-                }),
+    name: "rosario1",
+    theme: "default",
+    difficulty: 3,
+    timeLimit: 180,
+    layout: [
+        "####################",
+        "#                  #",
+        "#                  #",
+        "# EX  T     X T    #",
+        "#DDDDDDHDDDDDDDDH  #",
+        "#      H        H  #",
+        "#      H        H  #",
+        "#   X  H    T X H  #",
+        "# HDDDDDDHDDDDDDDDD#",
+        "# H      H         #",
+        "# H      H         #",
+        "# H   T  H    T    #",
+        "#DDDDDDDDDDDDDDHDD #",
+        "#              H   #",
+        "# P   T     T  H   #",
+        "####################"
+    ]
+}),
                 
                 // Level 2 - Introducing Ropes
                 new Level({
