@@ -1,0 +1,1692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lode Runner</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.7.0/lib/p5.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #222;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        #game-container {
+            position: relative;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+    <script>
+        // Constants
+        const TILE_SIZE = 32;
+        const GRID_WIDTH = 20;
+        const GRID_HEIGHT = 16;
+        const GAME_WIDTH = GRID_WIDTH * TILE_SIZE;
+        const GAME_HEIGHT = GRID_HEIGHT * TILE_SIZE;
+        const GRAVITY = 0.5;
+        const TERMINAL_VELOCITY = 8;
+        const PLAYER_SPEED = 3;
+        const CLIMB_SPEED = 2;
+        const HOLE_DURATION = 3000; // 3 seconds in milliseconds
+        const ENEMY_SPEED = 1.5;
+
+        // Game state
+        let gameState;
+        let levels;
+        let currentLevel;
+        let timer;
+        let player;
+        let enemies = [];
+        let treasures = [];
+        let holes = [];
+        let exit;
+        let score = 0;
+        let lives = 3;
+        let levelNumber = 1;
+        let paused = false;
+        let gameOver = false;
+        let levelComplete = false;
+        let levelStartTime = 0;
+        let levelFinishTime = 0;
+        let highScores = [];
+
+        // Images and animations
+        let playerImg, playerDigImg, playerClimbImg;
+        let enemyImg, enemyTrappedImg, enemyClimbImg;
+        let treasureImg, treasureCollectImg;
+        let tileSheetImg;
+        let diggableBlockImg, ladderImg, ropeImg, blockImg, exitImg;
+
+        // Game scenes management
+        const SCENES = {
+            TITLE: 'title',
+            GAME: 'game',
+            LEVEL_COMPLETE: 'level_complete',
+            GAME_OVER: 'game_over',
+            PAUSE: 'pause',
+            LEVEL_SELECT: 'level_select',
+            HIGH_SCORES: 'high_scores'
+        };
+        let currentScene = SCENES.TITLE;
+
+        /**
+         * Tile class - represents a single tile in the level
+         */
+        class Tile {
+            constructor(type, x, y) {
+                this.type = type;
+                this.x = x;
+                this.y = y;
+                this.isDiggable = type === 'diggable';
+                this.isLadder = type === 'ladder';
+                this.isRope = type === 'rope';
+                this.isSolid = ['block', 'diggable'].includes(type);
+                this.isExit = type === 'exit';
+                this.exitActive = false;
+            }
+
+            draw() {
+                switch (this.type) {
+                    case 'block':
+                        image(blockImg, this.x, this.y, TILE_SIZE, TILE_SIZE);
+                        break;
+                    case 'diggable':
+                        image(diggableBlockImg, this.x, this.y, TILE_SIZE, TILE_SIZE);
+                        break;
+                    case 'ladder':
+                        image(ladderImg, this.x, this.y, TILE_SIZE, TILE_SIZE);
+                        break;
+                    case 'rope':
+                        image(ropeImg, this.x, this.y, TILE_SIZE, TILE_SIZE);
+                        break;
+                    case 'exit':
+                        if (this.exitActive) {
+                            image(exitImg, this.x, this.y, TILE_SIZE, TILE_SIZE);
+                        } else {
+                            // Draw inactive exit (desaturated)
+                            tint(150, 150, 150, 150);
+                            image(exitImg, this.x, this.y, TILE_SIZE, TILE_SIZE);
+                            noTint();
+                        }
+                        break;
+                }
+            }
+        }
+
+        /**
+         * Level class - represents a game level
+         */
+        class Level {
+            constructor(data) {
+                this.grid = [];
+                this.playerStart = data.playerStart;
+                this.enemiesStart = data.enemiesStart || [];
+                this.treasureLocations = data.treasures || [];
+                this.exitLocation = data.exit;
+                this.difficulty = data.difficulty || 1;
+                this.theme = data.theme || 'default';
+                this.name = data.name || `Level ${levelNumber}`;
+                this.timeLimit = data.timeLimit || 300; // seconds
+                
+                // Initialize grid with empty tiles
+                for (let y = 0; y < GRID_HEIGHT; y++) {
+                    this.grid[y] = [];
+                    for (let x = 0; x < GRID_WIDTH; x++) {
+                        this.grid[y][x] = null;
+                    }
+                }
+                
+                // Place tiles based on provided layout
+                if (data.layout) {
+                    for (let y = 0; y < data.layout.length; y++) {
+                        const row = data.layout[y];
+                        for (let x = 0; x < row.length; x++) {
+                            const tileChar = row[x];
+                            switch (tileChar) {
+                                case '#': // Block
+                                    this.grid[y][x] = new Tile('block', x * TILE_SIZE, y * TILE_SIZE);
+                                    break;
+                                case 'D': // Diggable
+                                    this.grid[y][x] = new Tile('diggable', x * TILE_SIZE, y * TILE_SIZE);
+                                    break;
+                                case 'H': // Ladder
+                                    this.grid[y][x] = new Tile('ladder', x * TILE_SIZE, y * TILE_SIZE);
+                                    break;
+                                case '-': // Rope
+                                    this.grid[y][x] = new Tile('rope', x * TILE_SIZE, y * TILE_SIZE);
+                                    break;
+                                case 'E': // Exit
+                                    this.grid[y][x] = new Tile('exit', x * TILE_SIZE, y * TILE_SIZE);
+                                    this.exitLocation = {x: x * TILE_SIZE, y: y * TILE_SIZE};
+                                    break;
+                                case 'P': // Player start
+                                    this.playerStart = {x: x * TILE_SIZE, y: y * TILE_SIZE};
+                                    break;
+                                case 'X': // Enemy start
+                                    this.enemiesStart.push({x: x * TILE_SIZE, y: y * TILE_SIZE});
+                                    break;
+                                case 'T': // Treasure
+                                    this.treasureLocations.push({x: x * TILE_SIZE, y: y * TILE_SIZE});
+                                    break;
+                                default:
+                                    // Empty space or unrecognized character
+                                    break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            draw() {
+                for (let y = 0; y < GRID_HEIGHT; y++) {
+                    for (let x = 0; x < GRID_WIDTH; x++) {
+                        const tile = this.grid[y][x];
+                        if (tile) {
+                            tile.draw();
+                        }
+                    }
+                }
+            }
+
+            getTileAt(x, y) {
+                // Convert pixel coordinates to grid coordinates
+                const gridX = Math.floor(x / TILE_SIZE);
+                const gridY = Math.floor(y / TILE_SIZE);
+                
+                // Check if within bounds
+                if (gridX >= 0 && gridX < GRID_WIDTH && gridY >= 0 && gridY < GRID_HEIGHT) {
+                    return this.grid[gridY][gridX];
+                }
+                return null;
+            }
+
+            activateExit() {
+                if (this.exitLocation) {
+                    const gridX = Math.floor(this.exitLocation.x / TILE_SIZE);
+                    const gridY = Math.floor(this.exitLocation.y / TILE_SIZE);
+                    
+                    if (this.grid[gridY][gridX] && this.grid[gridY][gridX].isExit) {
+                        this.grid[gridY][gridX].exitActive = true;
+                    }
+                }
+            }
+        }
+
+        /**
+         * Player class - represents the player character
+         */
+        class Player {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = TILE_SIZE - 8;
+                this.height = TILE_SIZE - 4;
+                this.vx = 0;
+                this.vy = 0;
+                this.isOnGround = false;
+                this.isClimbing = false;
+                this.isOnRope = false;
+                this.isDigging = false;
+                this.isDead = false;
+                this.direction = 1; // 1 = right, -1 = left
+                this.digCooldown = 0;
+                this.invincible = false;
+                this.invincibleTimer = 0;
+                
+                // Animation frames
+                this.frameCount = 0;
+                this.frameDelay = 6; // frames between animation updates
+                this.currentFrame = 0;
+                this.digFrame = 0;
+            }
+
+            update() {
+                if (this.isDead) return;
+
+                // Handle digging cooldown
+                if (this.digCooldown > 0) {
+                    this.digCooldown--;
+                }
+
+                // Handle invincibility
+                if (this.invincible) {
+                    this.invincibleTimer--;
+                    if (this.invincibleTimer <= 0) {
+                        this.invincible = false;
+                    }
+                }
+
+                // Apply gravity if not climbing
+                if (!this.isClimbing) {
+                    this.vy += GRAVITY;
+                    if (this.vy > TERMINAL_VELOCITY) {
+                        this.vy = TERMINAL_VELOCITY;
+                    }
+                } else {
+                    // When climbing, stop vertical movement unless actively climbing
+                    if (!keyIsDown(UP_ARROW) && !keyIsDown(DOWN_ARROW)) {
+                        this.vy = 0;
+                    }
+                }
+
+                // Move player
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Constrain to game bounds
+                this.x = constrain(this.x, 0, GAME_WIDTH - this.width);
+                this.y = constrain(this.y, 0, GAME_HEIGHT - this.height);
+
+                // Check collisions with tiles
+                this.checkCollisions();
+
+                // Advance animation frames
+                this.frameCount++;
+                if (this.frameCount >= this.frameDelay) {
+                    this.frameCount = 0;
+                    this.currentFrame = (this.currentFrame + 1) % 4;
+                    if (this.isDigging) {
+                        this.digFrame = (this.digFrame + 1) % 2;
+                    }
+                }
+            }
+
+            draw() {
+                if (this.isDead) {
+                    // Draw dead player (flashing red)
+                    if (frameCount % 10 < 5) {
+                        fill(255, 0, 0);
+                        rect(this.x, this.y, this.width, this.height);
+                    }
+                    return;
+                }
+
+                // Flash when invincible
+                if (this.invincible && frameCount % 6 < 3) {
+                    tint(255, 255, 255, 150);
+                }
+
+                // Draw player based on current action
+                if (this.isDigging) {
+                    // Draw digging animation
+                    push();
+                    translate(this.x + this.width / 2, this.y + this.height / 2);
+                    if (this.direction === -1) {
+                        scale(-1, 1);
+                    }
+                    image(
+                        playerDigImg, 
+                        -this.width / 2, 
+                        -this.height / 2, 
+                        this.width, 
+                        this.height, 
+                        this.digFrame * TILE_SIZE, 
+                        0, 
+                        TILE_SIZE, 
+                        TILE_SIZE
+                    );
+                    pop();
+                } else if (this.isClimbing) {
+                    // Draw climbing animation
+                    image(
+                        playerClimbImg, 
+                        this.x, 
+                        this.y, 
+                        this.width, 
+                        this.height,
+                        (this.frameCount < this.frameDelay / 2 ? 0 : 1) * TILE_SIZE,
+                        0,
+                        TILE_SIZE,
+                        TILE_SIZE
+                    );
+                } else {
+                    // Draw walking/idle animation
+                    push();
+                    translate(this.x + this.width / 2, this.y + this.height / 2);
+                    if (this.direction === -1) {
+                        scale(-1, 1);
+                    }
+                    
+                    // If moving, use walk animation, otherwise use idle frame
+                    if (abs(this.vx) > 0.1) {
+                        image(
+                            playerImg, 
+                            -this.width / 2, 
+                            -this.height / 2, 
+                            this.width, 
+                            this.height,
+                            this.currentFrame * TILE_SIZE,
+                            0,
+                            TILE_SIZE,
+                            TILE_SIZE
+                        );
+                    } else {
+                        image(
+                            playerImg, 
+                            -this.width / 2, 
+                            -this.height / 2, 
+                            this.width, 
+                            this.height,
+                            0,
+                            0,
+                            TILE_SIZE,
+                            TILE_SIZE
+                        );
+                    }
+                    pop();
+                }
+
+                noTint(); // Reset tint after drawing player
+            }
+
+            checkCollisions() {
+                this.isOnGround = false;
+                this.isClimbing = false;
+                this.isOnRope = false;
+
+                // Check for ladder or rope at the player's position
+                const centerX = this.x + this.width / 2;
+                const centerY = this.y + this.height / 2;
+                const tile = currentLevel.getTileAt(centerX, centerY);
+                
+                if (tile && tile.isLadder) {
+                    this.isClimbing = true;
+                    this.isOnLadder = true;
+                } else {
+                    this.isOnLadder = false;
+                }
+                
+                if (tile && tile.isRope) {
+                    this.isOnRope = true;
+                    this.isClimbing = true;
+                }
+
+                // Check for solid tiles below the player
+                const bottomY = this.y + this.height + 1;
+                const bottomLeftTile = currentLevel.getTileAt(this.x + 2, bottomY);
+                const bottomRightTile = currentLevel.getTileAt(this.x + this.width - 2, bottomY);
+                
+                if ((bottomLeftTile && bottomLeftTile.isSolid) || 
+                    (bottomRightTile && bottomRightTile.isSolid)) {
+                    this.isOnGround = true;
+                    this.vy = 0;
+                    
+                    // Adjust player position to rest on top of tile
+                    const tileY = Math.floor(bottomY / TILE_SIZE) * TILE_SIZE;
+                    this.y = tileY - this.height;
+                }
+
+                // Check for collisions with solid tiles when moving horizontally
+                if (this.vx > 0) {
+                    // Moving right
+                    const rightX = this.x + this.width + 1;
+                    const rightTopTile = currentLevel.getTileAt(rightX, this.y + 2);
+                    const rightBottomTile = currentLevel.getTileAt(rightX, this.y + this.height - 2);
+                    
+                    if ((rightTopTile && rightTopTile.isSolid) || 
+                        (rightBottomTile && rightBottomTile.isSolid)) {
+                        this.vx = 0;
+                        
+                        // Adjust player position
+                        const tileX = Math.floor(rightX / TILE_SIZE) * TILE_SIZE;
+                        this.x = tileX - this.width - 1;
+                    }
+                }
+                else if (this.vx < 0) {
+                    // Moving left
+                    const leftX = this.x - 1;
+                    const leftTopTile = currentLevel.getTileAt(leftX, this.y + 2);
+                    const leftBottomTile = currentLevel.getTileAt(leftX, this.y + this.height - 2);
+                    
+                    if ((leftTopTile && leftTopTile.isSolid) || 
+                        (leftBottomTile && leftBottomTile.isSolid)) {
+                        this.vx = 0;
+                        
+                        // Adjust player position
+                        const tileX = Math.floor(leftX / TILE_SIZE) * TILE_SIZE + TILE_SIZE;
+                        this.x = tileX + 1;
+                    }
+                }
+
+                // Check for collisions with tile when moving vertically
+                if (this.vy < 0) {
+                    // Moving up
+                    const topY = this.y - 1;
+                    const topLeftTile = currentLevel.getTileAt(this.x + 2, topY);
+                    const topRightTile = currentLevel.getTileAt(this.x + this.width - 2, topY);
+                    
+                    if ((topLeftTile && topLeftTile.isSolid) || 
+                        (topRightTile && topRightTile.isSolid)) {
+                        this.vy = 0;
+                        
+                        // Adjust player position
+                        const tileY = Math.floor(topY / TILE_SIZE) * TILE_SIZE + TILE_SIZE;
+                        this.y = tileY + 1;
+                    }
+                }
+
+                // Check for exit collision
+                if (tile && tile.isExit && tile.exitActive) {
+                    completeLevel();
+                }
+            }
+
+            handleInput() {
+                if (this.isDead || paused) return;
+
+                // Reset velocity
+                this.vx = 0;
+
+                if (this.isDigging) return; // Don't allow movement while digging
+
+                // Movement controls
+                if (keyIsDown(LEFT_ARROW)) {
+                    this.vx = -PLAYER_SPEED;
+                    this.direction = -1;
+                } else if (keyIsDown(RIGHT_ARROW)) {
+                    this.vx = PLAYER_SPEED;
+                    this.direction = 1;
+                }
+
+                // Climbing controls
+                if (this.isClimbing) {
+                    if (keyIsDown(UP_ARROW)) {
+                        this.vy = -CLIMB_SPEED;
+                    } else if (keyIsDown(DOWN_ARROW)) {
+                        this.vy = CLIMB_SPEED;
+                    } else {
+                        this.vy = 0;
+                    }
+                }
+
+                // Digging controls
+                if (keyIsDown(32) && this.isOnGround && this.digCooldown <= 0) { // Spacebar
+                    this.tryDig();
+                }
+            }
+
+            tryDig() {
+                // Determine digging location (in front of player's feet)
+                const digX = this.x + (this.direction > 0 ? this.width + 2 : -TILE_SIZE + 2);
+                const digY = this.y + this.height;
+                
+                const gridX = Math.floor(digX / TILE_SIZE);
+                const gridY = Math.floor(digY / TILE_SIZE);
+                
+                // Check if the tile is diggable and there's a solid tile below it
+                if (gridX >= 0 && gridX < GRID_WIDTH && gridY >= 0 && gridY < GRID_HEIGHT) {
+                    const tile = currentLevel.grid[gridY][gridX];
+                    
+                    // Check if there's a support tile below
+                    const hasSupportBelow = gridY < GRID_HEIGHT - 1 && 
+                                            currentLevel.grid[gridY + 1][gridX] && 
+                                            currentLevel.grid[gridY + 1][gridX].isSolid;
+                    
+                    if (tile && tile.isDiggable && hasSupportBelow) {
+                        // Start digging animation
+                        this.isDigging = true;
+                        this.digCooldown = 30; // Prevent rapid digging
+                        
+                        // Create a temporary hole
+                        createHole(gridX, gridY);
+                        
+                        // Stop digging animation after a brief period
+                        setTimeout(() => {
+                            this.isDigging = false;
+                        }, 300);
+                    }
+                }
+            }
+
+            die() {
+                if (this.invincible) return;
+                
+                this.isDead = true;
+                lives--;
+                
+                // Reset player or game over after a short delay
+                setTimeout(() => {
+                    if (lives <= 0) {
+                        gameOver = true;
+                        currentScene = SCENES.GAME_OVER;
+                    } else {
+                        resetLevel();
+                    }
+                }, 1500);
+            }
+
+            makeInvincible(duration) {
+                this.invincible = true;
+                this.invincibleTimer = duration;
+            }
+        }
+
+        /**
+         * Enemy class - represents an enemy character
+         */
+        class Enemy {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = TILE_SIZE - 8;
+                this.height = TILE_SIZE - 4;
+                this.vx = 0;
+                this.vy = 0;
+                this.isOnGround = false;
+                this.isClimbing = false;
+                this.isOnRope = false;
+                this.isTrapped = false;
+                this.direction = 1; // 1 = right, -1 = left
+                this.pathfindCooldown = 0;
+                this.frameCount = 0;
+                this.frameDelay = 8;
+                this.currentFrame = 0;
+                this.trapTime = 0;
+            }
+
+            update() {
+                if (this.isTrapped) {
+                    // Check if trap time is over
+                    if (Date.now() - this.trapTime > HOLE_DURATION) {
+                        this.isTrapped = false;
+                    } else {
+                        return;
+                    }
+                }
+
+                // Apply gravity if not climbing
+                if (!this.isClimbing) {
+                    this.vy += GRAVITY;
+                    if (this.vy > TERMINAL_VELOCITY) {
+                        this.vy = TERMINAL_VELOCITY;
+                    }
+                }
+
+                // Move enemy
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Constrain to game bounds
+                this.x = constrain(this.x, 0, GAME_WIDTH - this.width);
+                this.y = constrain(this.y, 0, GAME_HEIGHT - this.height);
+
+                // Check collisions with tiles
+                this.checkCollisions();
+
+                // Simple AI to follow player
+                this.pathfindCooldown--;
+                if (this.pathfindCooldown <= 0) {
+                    this.findPathToPlayer();
+                    this.pathfindCooldown = 15; // Update path every 15 frames
+                }
+
+                // Advance animation frames
+                this.frameCount++;
+                if (this.frameCount >= this.frameDelay) {
+                    this.frameCount = 0;
+                    this.currentFrame = (this.currentFrame + 1) % 4;
+                }
+            }
+
+            draw() {
+                if (this.isTrapped) {
+                    // Draw trapped enemy
+                    image(
+                        enemyTrappedImg, 
+                        this.x, 
+                        this.y, 
+                        this.width, 
+                        this.height,
+                        (frameCount % 20 < 10 ? 0 : 1) * TILE_SIZE,
+                        0,
+                        TILE_SIZE,
+                        TILE_SIZE
+                    );
+                    return;
+                }
+
+                if (this.isClimbing) {
+                    // Draw climbing animation
+                    image(
+                        enemyClimbImg, 
+                        this.x, 
+                        this.y, 
+                        this.width, 
+                        this.height,
+                        (this.frameCount < this.frameDelay / 2 ? 0 : 1) * TILE_SIZE,
+                        0,
+                        TILE_SIZE,
+                        TILE_SIZE
+                    );
+                } else {
+                    // Draw walking animation
+                    push();
+                    translate(this.x + this.width / 2, this.y + this.height / 2);
+                    if (this.direction === -1) {
+                        scale(-1, 1);
+                    }
+                    
+                    if (abs(this.vx) > 0.1) {
+                        image(
+                            enemyImg, 
+                            -this.width / 2, 
+                            -this.height / 2, 
+                            this.width, 
+                            this.height,
+                            this.currentFrame * TILE_SIZE,
+                            0,
+                            TILE_SIZE,
+                            TILE_SIZE
+                        );
+                    } else {
+                        image(
+                            enemyImg, 
+                            -this.width / 2, 
+                            -this.height / 2, 
+                            this.width, 
+                            this.height,
+                            0,
+                            0,
+                            TILE_SIZE,
+                            TILE_SIZE
+                        );
+                    }
+                    pop();
+                }
+            }
+
+            checkCollisions() {
+                this.isOnGround = false;
+                this.isClimbing = false;
+                this.isOnRope = false;
+
+                // Check for ladder or rope at the enemy's position
+                const centerX = this.x + this.width / 2;
+                const centerY = this.y + this.height / 2;
+                const tile = currentLevel.getTileAt(centerX, centerY);
+                
+                if (tile && tile.isLadder) {
+                    this.isClimbing = true;
+                    this.isOnLadder = true;
+                } else {
+                    this.isOnLadder = false;
+                }
+                
+                if (tile && tile.isRope) {
+                    this.isOnRope = true;
+                    this.isClimbing = true;
+                }
+
+                // Check for solid tiles below the enemy
+                const bottomY = this.y + this.height + 1;
+                const bottomLeftTile = currentLevel.getTileAt(this.x + 2, bottomY);
+                const bottomRightTile = currentLevel.getTileAt(this.x + this.width - 2, bottomY);
+                
+                if ((bottomLeftTile && bottomLeftTile.isSolid) || 
+                    (bottomRightTile && bottomRightTile.isSolid)) {
+                    this.isOnGround = true;
+                    this.vy = 0;
+                    
+                    // Adjust enemy position to rest on top of tile
+                    const tileY = Math.floor(bottomY / TILE_SIZE) * TILE_SIZE;
+                    this.y = tileY - this.height;
+                }
+
+                // Check for collisions with solid tiles when moving horizontally
+                if (this.vx > 0) {
+                    // Moving right
+                    const rightX = this.x + this.width + 1;
+                    const rightTopTile = currentLevel.getTileAt(rightX, this.y + 2);
+                    const rightBottomTile = currentLevel.getTileAt(rightX, this.y + this.height - 2);
+                    
+                    if ((rightTopTile && rightTopTile.isSolid) || 
+                        (rightBottomTile && rightBottomTile.isSolid)) {
+                        this.vx = 0;
+                        this.direction = -1; // Change direction
+                    }
+                }
+                else if (this.vx < 0) {
+                    // Moving left
+                    const leftX = this.x - 1;
+                    const leftTopTile = currentLevel.getTileAt(leftX, this.y + 2);
+                    const leftBottomTile = currentLevel.getTileAt(leftX, this.y + this.height - 2);
+                    
+                    if ((leftTopTile && leftTopTile.isSolid) || 
+                        (leftBottomTile && leftBottomTile.isSolid)) {
+                        this.vx = 0;
+                        this.direction = 1; // Change direction
+                    }
+                }
+
+                // Check for collisions with tile when moving vertically
+                if (this.vy < 0) {
+                    // Moving up
+                    const topY = this.y - 1;
+                    const topLeftTile = currentLevel.getTileAt(this.x + 2, topY);
+                    const topRightTile = currentLevel.getTileAt(this.x + this.width - 2, topY);
+                    
+                    if ((topLeftTile && topLeftTile.isSolid) || 
+                        (topRightTile && topRightTile.isSolid)) {
+                        this.vy = 0;
+                    }
+                }
+
+                // Check if enemy is in a hole
+                const holeX = Math.floor((this.x + this.width / 2) / TILE_SIZE);
+                const holeY = Math.floor((this.y + this.height / 2) / TILE_SIZE);
+                
+                for (let i = 0; i < holes.length; i++) {
+                    if (holes[i].x === holeX && holes[i].y === holeY && !this.isTrapped) {
+                        this.trap();
+                    }
+                }
+
+                // Check for collision with player
+                if (!player.isDead && !player.invincible && !this.isTrapped) {
+                    if (this.x < player.x + player.width &&
+                        this.x + this.width > player.x &&
+                        this.y < player.y + player.height &&
+                        this.y + this.height > player.y) {
+                        player.die();
+                    }
+                }
+            }
+
+            findPathToPlayer() {
+                // Simple AI to follow player
+                
+                // Reset velocity
+                this.vx = 0;
+                
+                if (this.isClimbing) {
+                    // When on a ladder, move up or down based on player position
+                    if (player.y < this.y - TILE_SIZE) {
+                        this.vy = -ENEMY_SPEED; // Move up
+                    } else if (player.y > this.y + TILE_SIZE) {
+                        this.vy = ENEMY_SPEED; // Move down
+                    } else {
+                        this.vy = 0; // Stay at current level
+                        
+                        // If on a rope, move horizontally
+                        if (this.isOnRope) {
+                            if (player.x < this.x - 5) {
+                                this.vx = -ENEMY_SPEED;
+                                this.direction = -1;
+                            } else if (player.x > this.x + 5) {
+                                this.vx = ENEMY_SPEED;
+                                this.direction = 1;
+                            }
+                        }
+                    }
+                } else if (this.isOnGround) {
+                    // Move horizontally towards player when on ground
+                    if (player.x < this.x - 5) {
+                        this.vx = -ENEMY_SPEED;
+                        this.direction = -1;
+                    } else if (player.x > this.x + 5) {
+                        this.vx = ENEMY_SPEED;
+                        this.direction = 1;
+                    }
+                    
+                    // If player is on a different level, look for ladder or rope
+                    if (player.y < this.y - TILE_SIZE) {
+                        // Look for ladder or rope nearby
+                        const centerX = this.x + this.width / 2;
+                        const centerY = this.y + this.height / 2;
+                        
+                        // Check a few tiles to the left and right
+                        for (let offset = -3; offset <= 3; offset++) {
+                            const checkX = centerX + offset * TILE_SIZE;
+                            const tile = currentLevel.getTileAt(checkX, centerY);
+                            
+                            if (tile && (tile.isLadder || tile.isRope)) {
+                                // Move towards this ladder/rope
+                                if (checkX < centerX) {
+                                    this.vx = -ENEMY_SPEED;
+                                    this.direction = -1;
+                                } else {
+                                    this.vx = ENEMY_SPEED;
+                                    this.direction = 1;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            trap() {
+                this.isTrapped = true;
+                this.vx = 0;
+                this.vy = 0;
+                this.trapTime = Date.now();
+            }
+        }
+
+        /**
+         * Treasure class - represents a collectible treasure
+         */
+        class Treasure {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = TILE_SIZE - 8;
+                this.height = TILE_SIZE - 8;
+                this.collected = false;
+                this.animFrame = 0;
+                this.frameDelay = 10;
+                this.frameCount = 0;
+                this.collectAnimStartTime = 0;
+                this.collectAnimDuration = 500; // ms
+            }
+
+            update() {
+                // Animate treasure
+                this.frameCount++;
+                if (this.frameCount >= this.frameDelay) {
+                    this.frameCount = 0;
+                    this.animFrame = (this.animFrame + 1) % 4;
+                }
+
+                // Check for collision with player
+                if (!this.collected && 
+                    this.x < player.x + player.width &&
+                    this.x + this.width > player.x &&
+                    this.y < player.y + player.height &&
+                    this.y + this.height > player.y) {
+                    this.collect();
+                }
+            }
+
+            draw() {
+                if (this.collected) {
+                    // Draw collection animation
+                    const elapsedTime = Date.now() - this.collectAnimStartTime;
+                    const progress = elapsedTime / this.collectAnimDuration;
+                    
+                    if (progress < 1) {
+                        // Animate collection (fade out and rise up)
+                        const fadeAlpha = 255 * (1 - progress);
+                        const riseOffset = progress * TILE_SIZE;
+                        
+                        push();
+                        tint(255, 255, 255, fadeAlpha);
+                        image(
+                            treasureCollectImg,
+                            this.x,
+                            this.y - riseOffset,
+                            this.width,
+                            this.height,
+                            Math.floor(progress * 4) * TILE_SIZE,
+                            0,
+                            TILE_SIZE,
+                            TILE_SIZE
+                        );
+                        pop();
+                    }
+                    return;
+                }
+
+                // Draw normal treasure
+                image(
+                    treasureImg,
+                    this.x,
+                    this.y,
+                    this.width,
+                    this.height,
+                    this.animFrame * TILE_SIZE,
+                    0,
+                    TILE_SIZE,
+                    TILE_SIZE
+                );
+            }
+
+            collect() {
+                if (!this.collected) {
+                    this.collected = true;
+                    this.collectAnimStartTime = Date.now();
+                    
+                    // Update score and check if all treasures collected
+                    score += 100;
+                    checkAllTreasuresCollected();
+                    
+                    // Play sound
+                    // treasureSound.play();
+                }
+            }
+        }
+
+        /**
+         * Hole class - represents a temporary hole created by digging
+         */
+        class Hole {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.createTime = Date.now();
+                this.duration = HOLE_DURATION;
+                this.refillAnimStartTime = 0;
+                this.refillAnimDuration = 500; // ms
+                this.isRefilling = false;
+            }
+
+            update() {
+                // Check if hole duration is over
+                const elapsed = Date.now() - this.createTime;
+                
+                if (!this.isRefilling && elapsed >= this.duration - this.refillAnimDuration) {
+                    this.isRefilling = true;
+                    this.refillAnimStartTime = Date.now();
+                }
+                
+                return elapsed < this.duration;
+            }
+
+            draw() {
+                // Draw hole
+                const x = this.x * TILE_SIZE;
+                const y = this.y * TILE_SIZE;
+                
+                if (this.isRefilling) {
+                    // Draw refill animation
+                    const refillProgress = (Date.now() - this.refillAnimStartTime) / this.refillAnimDuration;
+                    
+                    // Draw partially filled hole
+                    fill(139, 69, 19); // Brown color
+                    rect(x, y, TILE_SIZE, TILE_SIZE * refillProgress);
+                    
+                    // Draw hole outline
+                    noFill();
+                    stroke(0);
+                    rect(x, y, TILE_SIZE, TILE_SIZE);
+                    noStroke();
+                } else {
+                    // Draw empty hole
+                    fill(0);
+                    rect(x, y, TILE_SIZE, TILE_SIZE);
+                }
+            }
+        }
+
+        // ==========================================
+        // Game Utility Functions
+        // ==========================================
+
+        function checkAllTreasuresCollected() {
+            // Check if all treasures have been collected
+            const allCollected = treasures.every(t => t.collected);
+            
+            if (allCollected) {
+                // Activate exit
+                currentLevel.activateExit();
+            }
+        }
+
+        function createHole(x, y) {
+            // Create a new hole at the specified grid coordinates
+            const newHole = new Hole(x, y);
+            holes.push(newHole);
+            
+            // Remove the tile temporarily
+            if (currentLevel.grid[y][x]) {
+                const originalTile = currentLevel.grid[y][x];
+                currentLevel.grid[y][x] = null;
+                
+                // Restore tile when hole refills
+                setTimeout(() => {
+                    currentLevel.grid[y][x] = originalTile;
+                }, HOLE_DURATION);
+            }
+        }
+
+        function completeLevel() {
+            levelComplete = true;
+            levelFinishTime = Date.now();
+            
+            // Calculate time bonus
+            const timeElapsed = (levelFinishTime - levelStartTime) / 1000; // seconds
+            const timeBonus = Math.max(0, Math.floor((currentLevel.timeLimit - timeElapsed) * 10));
+            score += timeBonus;
+            
+            // Switch to level complete scene after a short delay
+            setTimeout(() => {
+                currentScene = SCENES.LEVEL_COMPLETE;
+            }, 1000);
+        }
+
+        function resetLevel() {
+            // Reset game objects
+            player = new Player(
+                currentLevel.playerStart.x,
+                currentLevel.playerStart.y
+            );
+            
+            enemies = [];
+            for (let i = 0; i < currentLevel.enemiesStart.length; i++) {
+                enemies.push(new Enemy(
+                    currentLevel.enemiesStart[i].x,
+                    currentLevel.enemiesStart[i].y
+                ));
+            }
+            
+            treasures = [];
+            for (let i = 0; i < currentLevel.treasureLocations.length; i++) {
+                treasures.push(new Treasure(
+                    currentLevel.treasureLocations[i].x,
+                    currentLevel.treasureLocations[i].y
+                ));
+            }
+            
+            holes = [];
+            levelComplete = false;
+            levelStartTime = Date.now();
+            
+            // Make player temporarily invincible after respawn
+            player.makeInvincible(60); // ~1 second
+        }
+
+        function nextLevel() {
+            levelNumber++;
+            
+            // Check if there are more levels
+            if (levelNumber > levels.length) {
+                // Game completed
+                currentScene = SCENES.GAME_OVER;
+                return;
+            }
+            
+            // Load the next level
+            currentLevel = levels[levelNumber - 1];
+            resetLevel();
+            
+            // Extra life every 5 levels
+            if (levelNumber % 5 === 0) {
+                lives++;
+            }
+            
+            currentScene = SCENES.GAME;
+        }
+
+        // ==========================================
+        // Scenes
+        // ==========================================
+
+        function drawTitleScene() {
+            background(0);
+            
+            // Draw title
+            textSize(48);
+            fill(255, 215, 0); // Gold color
+            textAlign(CENTER, CENTER);
+            text("LODE RUNNER", width / 2, height / 3);
+            
+            // Draw instructions
+            textSize(18);
+            fill(255);
+            text("ARROW KEYS to move", width / 2, height / 2);
+            text("SPACE to dig", width / 2, height / 2 + 30);
+            text("Collect all treasures to unlock the exit", width / 2, height / 2 + 60);
+            
+            // Draw start button
+            drawButton("START GAME", width / 2, height * 3 / 4, 200, 50, () => {
+                currentScene = SCENES.GAME;
+                resetLevel();
+            });
+            
+            // Draw level select button
+            drawButton("LEVEL SELECT", width / 2, height * 3 / 4 + 70, 200, 50, () => {
+                currentScene = SCENES.LEVEL_SELECT;
+            });
+        }
+
+        function drawGameScene() {
+            background(0);
+            
+            // Draw level
+            currentLevel.draw();
+            
+            // Draw holes
+            for (let i = holes.length - 1; i >= 0; i--) {
+                holes[i].draw();
+                if (!holes[i].update()) {
+                    holes.splice(i, 1);
+                }
+            }
+            
+            // Draw treasures
+            for (let i = 0; i < treasures.length; i++) {
+                treasures[i].update();
+                treasures[i].draw();
+            }
+            
+            // Draw player
+            player.handleInput();
+            player.update();
+            player.draw();
+            
+            // Draw enemies
+            for (let i = 0; i < enemies.length; i++) {
+                enemies[i].update();
+                enemies[i].draw();
+            }
+            
+            // Draw UI
+            drawGameUI();
+            
+            // Handle pause
+            if (keyIsDown(27) && frameCount % 10 === 0) { // ESC key
+                paused = !paused;
+                if (paused) {
+                    currentScene = SCENES.PAUSE;
+                }
+            }
+        }
+
+        function drawLevelCompleteScene() {
+            background(0, 0, 100);
+            
+            // Draw level complete text
+            textSize(36);
+            fill(255, 215, 0); // Gold color
+            textAlign(CENTER, CENTER);
+            text("LEVEL " + levelNumber + " COMPLETE!", width / 2, height / 3);
+            
+            // Draw stats
+            textSize(24);
+            fill(255);
+            const timeElapsed = (levelFinishTime - levelStartTime) / 1000; // seconds
+            const timeBonus = Math.max(0, Math.floor((currentLevel.timeLimit - timeElapsed) * 10));
+            
+            text("Time: " + timeElapsed.toFixed(1) + " seconds", width / 2, height / 2);
+            text("Time Bonus: " + timeBonus, width / 2, height / 2 + 40);
+            text("Score: " + score, width / 2, height / 2 + 80);
+            
+            // Draw next level button
+            drawButton("NEXT LEVEL", width / 2, height * 3 / 4, 200, 50, () => {
+                nextLevel();
+            });
+        }
+
+        function drawGameOverScene() {
+            background(0);
+            
+            if (lives <= 0) {
+                // Game over (lose)
+                textSize(48);
+                fill(255, 0, 0);
+                textAlign(CENTER, CENTER);
+                text("GAME OVER", width / 2, height / 3);
+            } else {
+                // Game over (win)
+                textSize(48);
+                fill(0, 255, 0);
+                textAlign(CENTER, CENTER);
+                text("CONGRATULATIONS!", width / 2, height / 3);
+                
+                textSize(24);
+                fill(255, 215, 0);
+                text("You completed all levels!", width / 2, height / 3 + 60);
+            }
+            
+            // Draw final score
+            textSize(36);
+            fill(255);
+            text("Final Score: " + score, width / 2, height / 2);
+            
+            // Draw restart button
+            drawButton("PLAY AGAIN", width / 2, height * 3 / 4, 200, 50, () => {
+                // Reset game state
+                score = 0;
+                lives = 3;
+                levelNumber = 1;
+                currentLevel = levels[0];
+                resetLevel();
+                gameOver = false;
+                currentScene = SCENES.GAME;
+            });
+            
+            // Draw main menu button
+            drawButton("MAIN MENU", width / 2, height * 3 / 4 + 70, 200, 50, () => {
+                currentScene = SCENES.TITLE;
+            });
+        }
+
+        function drawPauseScene() {
+            // Draw semi-transparent overlay
+            fill(0, 0, 0, 150);
+            rect(0, 0, width, height);
+            
+            // Draw pause text
+            textSize(48);
+            fill(255);
+            textAlign(CENTER, CENTER);
+            text("PAUSED", width / 2, height / 3);
+            
+            // Draw resume button
+            drawButton("RESUME", width / 2, height / 2, 200, 50, () => {
+                paused = false;
+                currentScene = SCENES.GAME;
+            });
+            
+            // Draw restart button
+            drawButton("RESTART LEVEL", width / 2, height / 2 + 70, 200, 50, () => {
+                paused = false;
+                resetLevel();
+                currentScene = SCENES.GAME;
+            });
+            
+            // Draw main menu button
+            drawButton("MAIN MENU", width / 2, height / 2 + 140, 200, 50, () => {
+                paused = false;
+                currentScene = SCENES.TITLE;
+            });
+        }
+
+        function drawLevelSelectScene() {
+            background(0, 0, 50);
+            
+            // Draw title
+            textSize(36);
+            fill(255);
+            textAlign(CENTER, CENTER);
+            text("LEVEL SELECT", width / 2, 50);
+            
+            // Draw level buttons
+            const buttonsPerRow = 4;
+            const buttonWidth = 100;
+            const buttonHeight = 50;
+            const padding = 20;
+            
+            for (let i = 0; i < levels.length; i++) {
+                const row = Math.floor(i / buttonsPerRow);
+                const col = i % buttonsPerRow;
+                
+                const x = col * (buttonWidth + padding) + buttonWidth / 2 + padding + (width - buttonsPerRow * (buttonWidth + padding)) / 2;
+                const y = row * (buttonHeight + padding) + buttonHeight / 2 + 120;
+                
+                drawButton("LEVEL " + (i + 1), x, y, buttonWidth, buttonHeight, () => {
+                    levelNumber = i + 1;
+                    currentLevel = levels[i];
+                    resetLevel();
+                    currentScene = SCENES.GAME;
+                }, levels[i].theme);
+            }
+            
+            // Draw back button
+            drawButton("BACK", width / 2, height - 50, 150, 50, () => {
+                currentScene = SCENES.TITLE;
+            });
+        }
+
+        function drawGameUI() {
+            // Draw score, lives, and level info
+            textSize(18);
+            fill(255);
+            textAlign(LEFT, TOP);
+            text("SCORE: " + score, 10, 10);
+            text("LIVES: " + lives, 10, 40);
+            text("LEVEL: " + levelNumber, 10, 70);
+            
+            // Draw treasures remaining
+            const treasuresRemaining = treasures.filter(t => !t.collected).length;
+            text("TREASURES: " + treasuresRemaining, 10, 100);
+            
+            // Draw time
+            if (currentLevel.timeLimit) {
+                const timeElapsed = (Date.now() - levelStartTime) / 1000; // seconds
+                const timeRemaining = Math.max(0, currentLevel.timeLimit - timeElapsed);
+                text("TIME: " + timeRemaining.toFixed(0), 10, 130);
+            }
+        }
+
+        function drawButton(label, x, y, width, height, onClick, theme) {
+            // Check if mouse is over button
+            const isHovered = mouseX >= x - width / 2 && mouseX <= x + width / 2 &&
+                              mouseY >= y - height / 2 && mouseY <= y + height / 2;
+            
+            // Draw button
+            if (isHovered) {
+                fill(100, 100, 255);
+            } else {
+                // Use theme color if provided, otherwise default blue
+                if (theme === 'cave') {
+                    fill(139, 69, 19); // Brown
+                } else if (theme === 'ice') {
+                    fill(0, 150, 220); // Light blue
+                } else if (theme === 'castle') {
+                    fill(150, 0, 0); // Dark red
+                } else {
+                    fill(50, 50, 200); // Default blue
+                }
+            }
+            
+            rect(x - width / 2, y - height / 2, width, height, 5);
+            
+            // Draw label
+            textSize(16);
+            fill(255);
+            textAlign(CENTER, CENTER);
+            text(label, x, y);
+            
+            // Register click handler
+            if (isHovered && mouseIsPressed && !pmouseIsPressed) {
+                onClick();
+            }
+        }
+
+        // ==========================================
+        // p5.js Functions
+        // ==========================================
+
+        function preload() {
+            // Mockup functions to represent loading assets
+            // In a real game, these would be actual image loads
+            
+            // Create mock images for all game elements
+            createMockImages();
+        }
+
+        function setup() {
+            // Create canvas
+            createCanvas(GAME_WIDTH, GAME_HEIGHT);
+            
+            // Initialize game
+            initializeGame();
+        }
+
+        function draw() {
+            // Draw current scene
+            switch (currentScene) {
+                case SCENES.TITLE:
+                    drawTitleScene();
+                    break;
+                case SCENES.GAME:
+                    drawGameScene();
+                    break;
+                case SCENES.LEVEL_COMPLETE:
+                    drawLevelCompleteScene();
+                    break;
+                case SCENES.GAME_OVER:
+                    drawGameOverScene();
+                    break;
+                case SCENES.PAUSE:
+                    drawPauseScene();
+                    break;
+                case SCENES.LEVEL_SELECT:
+                    drawLevelSelectScene();
+                    break;
+            }
+        }
+
+        function keyPressed() {
+            // Handle key presses that aren't continuous
+            if (keyCode === 27) { // ESC key
+                if (currentScene === SCENES.GAME) {
+                    paused = true;
+                    currentScene = SCENES.PAUSE;
+                }
+            }
+            
+            return false; // Prevent default behavior
+        }
+
+        // ==========================================
+        // Game Initialization
+        // ==========================================
+
+        function createMockImages() {
+            // Create mock images for all game elements using p5.js
+            // In a real game, these would be loaded from actual image files
+            
+            // Player images
+            playerImg = createGraphics(TILE_SIZE * 4, TILE_SIZE);
+            for (let i = 0; i < 4; i++) {
+                playerImg.fill(0, 0, 255); // Blue
+                playerImg.ellipse(i * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2, TILE_SIZE - 8, TILE_SIZE - 4);
+            }
+            
+            playerDigImg = createGraphics(TILE_SIZE * 2, TILE_SIZE);
+            for (let i = 0; i < 2; i++) {
+                playerDigImg.fill(0, 0, 255); // Blue
+                playerDigImg.ellipse(i * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2, TILE_SIZE - 8, TILE_SIZE - 4);
+                // Add digging position
+                playerDigImg.fill(255);
+                playerDigImg.rect(i * TILE_SIZE + TILE_SIZE / 2 + 6, TILE_SIZE / 2 + 6, 8, 8);
+            }
+            
+            playerClimbImg = createGraphics(TILE_SIZE * 2, TILE_SIZE);
+            for (let i = 0; i < 2; i++) {
+                playerClimbImg.fill(0, 0, 255); // Blue
+                playerClimbImg.ellipse(i * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2, TILE_SIZE - 8, TILE_SIZE - 8);
+                // Add climb position
+                playerClimbImg.fill(255);
+                playerClimbImg.rect(i * TILE_SIZE + TILE_SIZE / 2 - 4, TILE_SIZE / 2 - 4, 8, 8);
+            }
+            
+            // Enemy images
+            enemyImg = createGraphics(TILE_SIZE * 4, TILE_SIZE);
+            for (let i = 0; i < 4; i++) {
+                enemyImg.fill(255, 0, 0); // Red
+                enemyImg.ellipse(i * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2, TILE_SIZE - 8, TILE_SIZE - 4);
+            }
+            
+            enemyTrappedImg = createGraphics(TILE_SIZE * 2, TILE_SIZE);
+            for (let i = 0; i < 2; i++) {
+                enemyTrappedImg.fill(255, 0, 0, 150); // Semi-transparent red
+                enemyTrappedImg.ellipse(i * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2, TILE_SIZE - 8, TILE_SIZE - 4);
+            }
+            
+            enemyClimbImg = createGraphics(TILE_SIZE * 2, TILE_SIZE);
+            for (let i = 0; i < 2; i++) {
+                enemyClimbImg.fill(255, 0, 0); // Red
+                enemyClimbImg.ellipse(i * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2, TILE_SIZE - 8, TILE_SIZE - 8);
+                // Add climb position
+                enemyClimbImg.fill(255);
+                enemyClimbImg.rect(i * TILE_SIZE + TILE_SIZE / 2 - 4, TILE_SIZE / 2 - 4, 8, 8);
+            }
+            
+            // Treasure images
+            treasureImg = createGraphics(TILE_SIZE * 4, TILE_SIZE);
+            for (let i = 0; i < 4; i++) {
+                treasureImg.fill(255, 215, 0); // Gold
+                treasureImg.rect(i * TILE_SIZE + 8, 8, TILE_SIZE - 16, TILE_SIZE - 16, 4);
+                treasureImg.fill(255, 255, 0);
+                treasureImg.ellipse(i * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2, (i % 2) ? 12 : 16, (i % 2) ? 12 : 16);
+            }
+            
+            treasureCollectImg = createGraphics(TILE_SIZE * 4, TILE_SIZE);
+            for (let i = 0; i < 4; i++) {
+                treasureCollectImg.fill(255, 215, 0, 255 - i * 60); // Fading gold
+                treasureCollectImg.rect(i * TILE_SIZE + 8, 8, TILE_SIZE - 16, TILE_SIZE - 16, 4);
+                treasureCollectImg.fill(255, 255, 0, 255 - i * 60);
+                treasureCollectImg.ellipse(i * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 2, 16 - i * 2, 16 - i * 2);
+            }
+            
+            // Tile images
+            blockImg = createGraphics(TILE_SIZE, TILE_SIZE);
+            blockImg.fill(100, 100, 100); // Gray
+            blockImg.rect(0, 0, TILE_SIZE, TILE_SIZE);
+            blockImg.fill(120, 120, 120);
+            blockImg.rect(2, 2, TILE_SIZE - 4, TILE_SIZE - 4);
+            
+            diggableBlockImg = createGraphics(TILE_SIZE, TILE_SIZE);
+            diggableBlockImg.fill(139, 69, 19); // Brown
+            diggableBlockImg.rect(0, 0, TILE_SIZE, TILE_SIZE);
+            diggableBlockImg.fill(160, 82, 45);
+            diggableBlockImg.rect(2, 2, TILE_SIZE - 4, TILE_SIZE - 4);
+            
+            ladderImg = createGraphics(TILE_SIZE, TILE_SIZE);
+            ladderImg.stroke(200, 200, 0); // Yellow
+            ladderImg.strokeWeight(2);
+            ladderImg.line(4, 0, 4, TILE_SIZE);
+            ladderImg.line(TILE_SIZE - 4, 0, TILE_SIZE - 4, TILE_SIZE);
+            for (let i = 4; i < TILE_SIZE; i += 8) {
+                ladderImg.line(4, i, TILE_SIZE - 4, i);
+            }
+            
+            ropeImg = createGraphics(TILE_SIZE, TILE_SIZE);
+            ropeImg.stroke(200, 150, 100); // Tan
+            ropeImg.strokeWeight(3);
+            ropeImg.line(0, 8, TILE_SIZE, 8);
+            
+            exitImg = createGraphics(TILE_SIZE, TILE_SIZE);
+            exitImg.fill(0, 255, 0); // Green
+            exitImg.rect(0, 0, TILE_SIZE, TILE_SIZE, 4);
+            exitImg.fill(255);
+            exitImg.textSize(20);
+            exitImg.textAlign(CENTER, CENTER);
+            exitImg.text("E", TILE_SIZE / 2, TILE_SIZE / 2);
+        }
+
+        function initializeGame() {
+            // Define levels
+            levels = [
+                // Level 1 - Tutorial
+                new Level({
+                    name: "Tutorial",
+                    theme: "default",
+                    difficulty: 1,
+                    timeLimit: 120,
+                    layout: [
+                        "####################",
+                        "#                  #",
+                        "#  T   T     T     #",
+                        "#  #   #     #     #",
+                        "#                  #",
+                        "#           H      #",
+                        "#           H      #",
+                        "#  X   X    H      #",
+                        "#  D   D    H      #",
+                        "#  #################",
+                        "#                  #",
+                        "#                  #",
+                        "#       P          #",
+                        "#  DDDDDDDDDDDD    #",
+                        "#  ############    #",
+                        "############ E #####"
+                    ]
+                }),
+                
+                // Level 2 - Introducing Ropes
+                new Level({
+                    name: "Ropes & Ladders",
+                    theme: "default",
+                    difficulty: 2,
+                    timeLimit: 180,
+                    layout: [
+                        "####################",
+                        "#       T       T  #",
+                        "#  ######  ######  #",
+                        "#                  #",
+                        "#  H----     ----H #",
+                        "#  H            H  #",
+                        "# X#     X      #  #",
+                        "#  D     D  X   D  #",
+                        "#  ##############  #",
+                        "#                  #",
+                        "#  H----    T      #",
+                        "#  H            H  #",
+                        "#  #     P      #  #",
+                        "#  D            D  #",
+                        "#  #########  #### #",
+                        "######## E #########"
+                    ]
+                }),
+                
+                // Level 3 - Cave Theme
+                new Level({
+                    name: "The Caves",
+                    theme: "cave",
+                    difficulty: 3,
+                    timeLimit: 240,
+                    layout: [
+                        "####################",
+                        "#           T      #",
+                        "# ######## ###H### #",
+                        "#          # #H  # #",
+                        "# ######## # ## # ##",
+                        "#        # #    #  #",
+                        "# ###### # ###### ##",
+                        "# #    # #      #  #",
+                        "# # ## # ###### # ##",
+                        "# # ## #      # #  #",
+                        "# # ## ###### # ####",
+                        "# #          # #  E#",
+                        "# ########## # ## ##",
+                        "#X         H # #  X#",
+                        "#DDDDDDDDDDD # ## ##",
+                        "############# #P####"
+                    ]
+                }),
+                
+                // Level 4 - Ice Theme
+                new Level({
+                    name: "Frozen Fortress",
+                    theme: "ice",
+                    difficulty: 4,
+                    timeLimit: 300,
+                    layout: [
+                        "####################",
+                        "#                  #",
+                        "# ## ## ## ## ## ###",
+                        "# #  #  #  #  #  # #",
+                        "# # H# H# H# H# H# #",
+                        "# #  #  #  #  #  # #",
+                        "# ## ## ## ## ## # #",
+                        "#       T          #",
+                        "# ----H---- ------ #",
+                        "#      H     X     #",
+                        "# --H--#-- ------ ##",
+                        "#    H       T    E#",
+                        "# -- ------ --------",
+                        "#X   X              ",
+                        "#D   D   DDDDDDDDDDD",
+                        "######P##############"
+                    ]
+                }),
+                
+                // Level 5 - Castle Theme with final challenge
+                new Level({
+                    name: "Castle of Doom",
+                    theme: "castle",
+                    difficulty: 5,
+                    timeLimit: 360,
+                    layout: [
+                        "####################",
+                        "#       T       T  #",
+                        "# ### ### ### ###  #",
+                        "# #X# # # # # # #  #",
+                        "# # # # # # # # #  #",
+                        "# # # # # # # # #  #",
+                        "# # # # # # # # #  #",
+                        "# #   #   #   # #  #",
+                        "# ### ### ### ###  #",
+                        "#                  #",
+                        "# H----H----H----H #",
+                        "# H    H    H    H #",
+                        "# #    #    #    # #",
+                        "# D    D    D    D #",
+                        "# #    #    #    # #",
+                        "#P#    #    #   E###"
+                    ]
+                })
+            ];
+            
+            // Set initial level
+            currentLevel = levels[0];
+            resetLevel();
+        }
+    </script>
+</body>
+</html>
