@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orlando Epidemic Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.7.0/lib/p5.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            margin: 20px auto;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 20px;
+            background-color: #ffffff;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .control-group {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .control-group h3 {
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+        
+        .simulation-view {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        
+        .map-container {
+            flex: 2;
+            min-width: 600px;
+            background-color: white;
+            border-radius: 5px;
+            padding: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .stats-container {
+            flex: 1;
+            min-width: 300px;
+            background-color: white;
+            border-radius: 5px;
+            padding: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            height: 400px;
+            overflow-y: auto;
+        }
+        
+        canvas {
+            display: block;
+            margin: 0 auto;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .stat-box {
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            background-color: #f9f9f9;
+        }
+        
+        .event-log {
+            margin-top: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        .event {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        
+        .event.critical {
+            background-color: #ffebee;
+        }
+        
+        .event.warning {
+            background-color: #fff8e1;
+        }
+        
+        .event.info {
+            background-color: #e8f5e9;
+        }
+        
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            margin-top: 10px;
+            gap: 10px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+        }
+        
+        .legend-color {
+            width: 15px;
+            height: 15px;
+            margin-right: 5px;
+            border-radius: 50%;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Orlando Epidemic Simulator</h1>
+            <p>A Monte Carlo simulation of epidemic spread in Orlando</p>
+        </div>
+        
+        <div class="controls">
+            <div class="control-group">
+                <h3>Disease Parameters</h3>
+                <label for="r0">R₀ (Basic Reproduction Number):</label>
+                <input type="number" id="r0" min="0.1" max="20" step="0.1" value="2.5">
+                
+                <label for="incubation">Incubation Period (days):</label>
+                <input type="number" id="incubation" min="1" max="30" step="1" value="5">
+                
+                <label for="infectious">Infectious Period (days):</label>
+                <input type="number" id="infectious" min="1" max="30" step="1" value="10">
+                
+                <label for="mortality">Mortality Rate (%):</label>
+                <input type="number" id="mortality" min="0" max="100" step="0.1" value="1.5">
+                
+                <label for="seasonality">Seasonal Effect:</label>
+                <select id="seasonality">
+                    <option value="none">None</option>
+                    <option value="mild" selected>Mild</option>
+                    <option value="strong">Strong</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <h3>Simulation Settings</h3>
+                <label for="population">Population Size:</label>
+                <input type="number" id="population" min="1000" max="1000000" step="1000" value="10000">
+                
+                <label for="initial-infected">Initial Infected:</label>
+                <input type="number" id="initial-infected" min="1" max="100" step="1" value="5">
+                
+                <label for="simulation-days">Simulation Days:</label>
+                <input type="number" id="simulation-days" min="30" max="1095" step="1" value="365">
+                
+                <label for="seed-locations">Initial Seed Location:</label>
+                <select id="seed-locations">
+                    <option value="random">Random</option>
+                    <option value="airport" selected>Airport</option>
+                    <option value="themepark">Theme Parks</option>
+                    <option value="downtown">Downtown</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <h3>Interventions</h3>
+                <label for="social-distancing">Social Distancing:</label>
+                <select id="social-distancing">
+                    <option value="none">None</option>
+                    <option value="low">Low (25% effective)</option>
+                    <option value="medium" selected>Medium (50% effective)</option>
+                    <option value="high">High (75% effective)</option>
+                </select>
+                
+                <label for="masking">Masking:</label>
+                <select id="masking">
+                    <option value="none">None</option>
+                    <option value="low">Low (25% effective)</option>
+                    <option value="medium" selected>Medium (50% effective)</option>
+                    <option value="high">High (75% effective)</option>
+                </select>
+                
+                <label for="vaccination-rate">Vaccination Rate (% per day):</label>
+                <input type="number" id="vaccination-rate" min="0" max="5" step="0.1" value="0.5">
+                
+                <label for="vaccination-start">Start Vaccination on Day:</label>
+                <input type="number" id="vaccination-start" min="0" max="365" step="1" value="90">
+            </div>
+            
+            <div class="control-group">
+                <h3>Simulation Control</h3>
+                <button id="start-btn">Start Simulation</button>
+                <button id="pause-btn" disabled>Pause</button>
+                <button id="reset-btn">Reset</button>
+                <button id="new-params-btn">Apply New Parameters</button>
+                
+                <label for="simulation-speed">Simulation Speed:</label>
+                <select id="simulation-speed">
+                    <option value="slow">Slow</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="fast">Fast</option>
+                    <option value="very-fast">Very Fast</option>
+                </select>
+                
+                <div style="margin-top: 10px;">
+                    <label for="monte-carlo-runs">Monte Carlo Runs:</label>
+                    <input type="number" id="monte-carlo-runs" min="1" max="100" step="1" value="1">
+                    <button id="run-monte-carlo-btn">Run Monte Carlo</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="simulation-view">
+            <div class="map-container">
+                <div id="simulation-canvas"></div>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #3366cc;"></div>
+                        <span>Susceptible</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #ff9900;"></div>
+                        <span>Exposed</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #cc0000;"></div>
+                        <span>Infectious</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #33cc33;"></div>
+                        <span>Recovered</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #333333;"></div>
+                        <span>Deceased</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #9900cc;"></div>
+                        <span>Vaccinated</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #ff3366; border-radius: 0;"></div>
+                        <span>Hospital</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #0099cc; border-radius: 0;"></div>
+                        <span>Airport</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #ff66cc; border-radius: 0;"></div>
+                        <span>Theme Park</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="stats-container">
+                <h3>Simulation Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <strong>Day:</strong> <span id="current-day">0</span>/<span id="total-days">365</span>
+                    </div>
+                    <div class="stat-box">
+                        <strong>Population:</strong> <span id="total-population">0</span>
+                    </div>
+                    <div class="stat-box">
+                        <strong>Susceptible:</strong> <span id="susceptible-count">0</span>
+                    </div>
+                    <div class="stat-box">
+                        <strong>Exposed:</strong> <span id="exposed-count">0</span>
+                    </div>
+                    <div class="stat-box">
+                        <strong>Infectious:</strong> <span id="infectious-count">0</span>
+                    </div>
+                    <div class="stat-box">
+                        <strong>Recovered:</strong> <span id="recovered-count">0</span>
+                    </div>
+                    <div class="stat-box">
+                        <strong>Deceased:</strong> <span id="deceased-count">0</span>
+                    </div>
+                    <div class="stat-box">
+                        <strong>Vaccinated:</strong> <span id="vaccinated-count">0</span>
+                    </div>
+                    <div class="stat-box">
+                        <strong>Total Cases:</strong> <span id="total-cases">0</span>
+                    </div>
+                    <div class="stat-box">
+                        <strong>New Cases:</strong> <span id="new-cases">0</span>
+                    </div>
+                    <div class="stat-box">
+                        <strong>Hospital Capacity:</strong> <span id="hospital-capacity">0</span>
+                    </div>
+                    <div class="stat-box">
+                        <strong>Hospital Usage:</strong> <span id="hospital-usage">0</span>
+                    </div>
+                </div>
+                
+                <h3>Event Log</h3>
+                <div class="event-log" id="event-log"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Define our simulation classes
+        
+        /**
+         * Location class - represents a specific place in Orlando
+         */
+        class Location {
+            constructor(x, y, type, name, capacity, transmissionRisk) {
+                this.x = x;
+                this.y = y;
+                this.type = type; // 'residential', 'commercial', 'hospital', 'airport', 'themepark'
+                this.name = name;
+                this.capacity = capacity;
+                this.transmissionRisk = transmissionRisk; // 0-1 scale
+                this.occupants = [];
+                
+                // Size for drawing
+                this.size = this.type === 'residential' ? 8 :
+                           this.type === 'commercial' ? 12 :
+                           this.type === 'hospital' ? 15 :
+                           this.type === 'airport' ? 20 :
+                           this.type === 'themepark' ? 18 : 10;
+            }
+            
+            getColor() {
+                switch(this.type) {
+                    case 'residential': return [150, 150, 150]; // gray
+                    case 'commercial': return [100, 100, 100]; // dark gray
+                    case 'hospital': return [255, 51, 102]; // pink/red
+                    case 'airport': return [0, 153, 204]; // blue
+                    case 'themepark': return [255, 102, 204]; // pink
+                    default: return [200, 200, 200]; // light gray
+                }
+            }
+            
+            draw(p) {
+                const color = this.getColor();
+                p.fill(color[0], color[1], color[2]);
+                p.noStroke();
+                
+                if (this.type === 'residential' || this.type === 'commercial') {
+                    p.rect(this.x - this.size/2, this.y - this.size/2, this.size, this.size);
+                } else {
+                    p.rect(this.x - this.size/2, this.y - this.size/2, this.size, this.size);
+                }
+            }
+            
+            addOccupant(person) {
+                if (this.occupants.length < this.capacity) {
+                    this.occupants.push(person);
+                    return true;
+                }
+                return false;
+            }
+            
+            removeOccupant(person) {
+                const index = this.occupants.indexOf(person);
+                if (index > -1) {
+                    this.occupants.splice(index, 1);
+                    return true;
+                }
+                return false;
+            }
+            
+            // Get effective transmission risk based on interventions
+            getEffectiveTransmissionRisk(simulation) {
+                let risk = this.transmissionRisk;
+                
+                // Apply social distancing effect
+                if (simulation.socialDistancing === 'low') {
+                    risk *= 0.75;
+                } else if (simulation.socialDistancing === 'medium') {
+                    risk *= 0.5;
+                } else if (simulation.socialDistancing === 'high') {
+                    risk *= 0.25;
+                }
+                
+                // Apply masking effect
+                if (simulation.masking === 'low') {
+                    risk *= 0.75;
+                } else if (simulation.masking === 'medium') {
+                    risk *= 0.5;
+                } else if (simulation.masking === 'high') {
+                    risk *= 0.25;
+                }
+                
+                // Adjust for occupancy density
+                const densityFactor = 1 + (this.occupants.length / this.capacity);
+                risk *= Math.min(2, densityFactor);
+                
+                // Apply seasonality effect
+                if (simulation.seasonality !== 'none') {
+                    // Sinusoidal variation for seasonality
+                    const dayOfYear = simulation.currentDay % 365;
+                    let seasonFactor = 1;
+                    
+                    if (simulation.seasonality === 'mild') {
+                        seasonFactor = 1 + 0.2 * Math.sin((dayOfYear / 365) * 2 * Math.PI);
+                    } else if (simulation.seasonality === 'strong') {
+                        seasonFactor = 1 + 0.4 * Math.sin((dayOfYear / 365) * 2 * Math.PI);
+                    }
+                    
+                    risk *= seasonFactor;
+                }
+                
+                return Math.min(1, Math.max(0, risk)); // Ensure risk stays between 0-1
+            }
+        }
+        
+        /**
+         * Person class - represents an individual in the simulation
+         */
+        class Person {
+            constructor(id, homeLocation) {
+                this.id = id;
+                this.homeLocation = homeLocation;
+                this.currentLocation = homeLocation;
+                
+                // Health status
+                this.status = 'susceptible'; // susceptible, exposed, infectious, recovered, deceased, vaccinated
+                this.daysExposed = 0;
+                this.daysInfectious = 0;
+                this.complianceLevel = Math.random(); // 0-1 representing how well they follow guidelines
+                
+                // Position within current location (for visualization)
+                this.x = homeLocation.x + (Math.random() * 2 - 1) * 10;
+                this.y = homeLocation.y + (Math.random() * 2 - 1) * 10;
+                this.targetX = this.x;
+                this.targetY = this.y;
+                this.speed = 0.2 + Math.random() * 0.3;
+                
+                // Demographics for disease severity
+                this.age = this.generateAge();
+                this.hasPreexistingCondition = Math.random() < 0.3; // 30% have pre-existing conditions
+                
+                // Daily routines
+                this.dailyLocations = [];
+                this.movementProbability = 0.01; // probability of moving to a new location each tick
+            }
+            
+            generateAge() {
+                // Simple age distribution
+                const r = Math.random();
+                if (r < 0.2) return 5 + Math.floor(Math.random() * 15); // 0-19
+                if (r < 0.5) return 20 + Math.floor(Math.random() * 20); // 20-39
+                if (r < 0.8) return 40 + Math.floor(Math.random() * 25); // 40-64
+                return 65 + Math.floor(Math.random() * 35); // 65+
+            }
+            
+            getColor() {
+                switch(this.status) {
+                    case 'susceptible': return [51, 102, 204]; // blue
+                    case 'exposed': return [255, 153, 0]; // orange
+                    case 'infectious': return [204, 0, 0]; // red
+                    case 'recovered': return [51, 204, 51]; // green
+                    case 'deceased': return [51, 51, 51]; // dark gray
+                    case 'vaccinated': return [153, 0, 204]; // purple
+                    default: return [200, 200, 200]; // light gray
+                }
+            }
+            
+            draw(p) {
+                const color = this.getColor();
+                p.fill(color[0], color[1], color[2]);
+                p.noStroke();
+                
+                if (this.status === 'deceased') {
+                    p.rect(this.x - 1.5, this.y - 1.5, 3, 3);
+                } else {
+                    p.ellipse(this.x, this.y, 4, 4);
+                }
+            }
+            
+            update(simulation) {
+                if (this.status === 'deceased') return;
+                
+                // Update position
+                this.updatePosition();
+                
+                // Update health status
+                this.updateHealthStatus(simulation);
+                
+                // Decide if the person should move to a new location
+                this.considerMovingToNewLocation(simulation);
+            }
+            
+            updatePosition() {
+                // Move toward target position
+                const dx = this.targetX - this.x;
+                const dy = this.targetY - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > 1) {
+                    this.x += (dx / distance) * this.speed;
+                    this.y += (dy / distance) * this.speed;
+                } else {
+                    // Set a new random target within current location
+                    this.setRandomTargetInCurrentLocation();
+                }
+            }
+            
+            setRandomTargetInCurrentLocation() {
+                const range = this.currentLocation.size * 0.8;
+                this.targetX = this.currentLocation.x + (Math.random() * 2 - 1) * range;
+                this.targetY = this.currentLocation.y + (Math.random() * 2 - 1) * range;
+            }
+            
+            updateHealthStatus(simulation) {
+                if (this.status === 'exposed') {
+                    this.daysExposed++;
+                    if (this.daysExposed >= simulation.incubationPeriod) {
+                        this.status = 'infectious';
+                        this.daysExposed = 0;
+                        simulation.statistics.exposed--;
+                        simulation.statistics.infectious++;
+                        simulation.statistics.newCases++;
+                        simulation.statistics.totalCases++;
+                    }
+                } else if (this.status === 'infectious') {
+                    this.daysInfectious++;
+                    if (this.daysInfectious >= simulation.infectiousPeriod) {
+                        // Determine if person recovers or dies
+                        let mortalityRisk = simulation.mortalityRate / 100; // Convert from percentage
+                        
+                        // Adjust for age
+                        if (this.age >= 65) mortalityRisk *= 3;
+                        else if (this.age >= 40) mortalityRisk *= 1.5;
+                        
+                        // Adjust for pre-existing conditions
+                        if (this.hasPreexistingCondition) mortalityRisk *= 2;
+                        
+                        // Reduce mortality if hospital capacity is not exceeded
+                        const hospitalCapacity = simulation.getHospitalCapacity();
+                        const hospitalized = simulation.getHospitalizedCount();
+                        
+                        if (hospitalized <= hospitalCapacity) {
+                            mortalityRisk *= 0.6; // Reduced mortality with adequate care
+                        } else {
+                            const capacityRatio = hospitalized / hospitalCapacity;
+                            mortalityRisk *= Math.min(3, 1 + capacityRatio * 0.5); // Increased risk when hospitals overwhelmed
+                        }
+                        
+                        if (Math.random() < mortalityRisk) {
+                            this.status = 'deceased';
+                            simulation.statistics.infectious--;
+                            simulation.statistics.deceased++;
+                            // Remove from current location
+                            this.currentLocation.removeOccupant(this);
+                        } else {
+                            this.status = 'recovered';
+                            simulation.statistics.infectious--;
+                            simulation.statistics.recovered++;
+                        }
+                        
+                        this.daysInfectious = 0;
+                    }
+                }
+            }
+            
+            considerMovingToNewLocation(simulation) {
+                if (Math.random() < this.movementProbability * (1 - simulation.socialDistancingEffect)) {
+                    // Determine potential destinations
+                    const possibleDestinations = [...this.dailyLocations];
+                    possibleDestinations.push(this.homeLocation); // Can always go home
+                    
+                    // Choose a random destination
+                    if (possibleDestinations.length > 0) {
+                        const destination = possibleDestinations[Math.floor(Math.random() * possibleDestinations.length)];
+                        this.moveToLocation(destination);
+                    }
+                }
+            }
+            
+            moveToLocation(newLocation) {
+                if (this.currentLocation) {
+                    this.currentLocation.removeOccupant(this);
+                }
+                
+                // Add to new location if there's capacity
+                if (newLocation.addOccupant(this)) {
+                    this.currentLocation = newLocation;
+                    this.x = newLocation.x + (Math.random() * 2 - 1) * 10;
+                    this.y = newLocation.y + (Math.random() * 2 - 1) * 10;
+                    this.setRandomTargetInCurrentLocation();
+                } else {
+                    // If new location is full, return to home
+                    this.homeLocation.addOccupant(this);
+                    this.currentLocation = this.homeLocation;
+                    this.x = this.homeLocation.x + (Math.random() * 2 - 1) * 10;
+                    this.y = this.homeLocation.y + (Math.random() * 2 - 1) * 10;
+                    this.setRandomTargetInCurrentLocation();
+                }
+            }
+            
+            expose() {
+                if (this.status === 'susceptible') {
+                    this.status = 'exposed';
+                    return true;
+                }
+                return false;
+            }
+            
+            vaccinate() {
+                if (this.status === 'susceptible') {
+                    this.status = 'vaccinated';
+                    return true;
+                }
+                return false;
+            }
+        }
+        
+        /**
+         * Simulation class - manages the entire epidemic simulation
+         */
+        class EpidemicSimulation {
+            constructor() {
+                // Simulation parameters
+                this.population = 10000;
+                this.r0 = 2.5;
+                this.incubationPeriod = 5;
+                this.infectiousPeriod = 10;
+                this.mortalityRate = 1.5;
+                this.initialInfected = 5;
+                this.simulationDays = 365;
+                this.seedLocations = 'airport';
+                this.seasonality = 'mild';
+                
+                // Intervention parameters
+                this.socialDistancing = 'medium';
+                this.socialDistancingEffect = 0.5; // Reduction in movement and transmission
+                this.masking = 'medium';
+                this.maskingEffect = 0.5; // Reduction in transmission
+                this.vaccinationRate = 0.5; // % per day
+                this.vaccinationStartDay = 90;
+                
+                // Simulation state
+                this.currentDay = 0;
+                this.isRunning = false;
+                this.isPaused = false;
+                this.simulationSpeed = 'medium';
+                this.currentRun = 1;
+                this.totalRuns = 1;
+                
+                // Canvas dimensions
+                this.width = 600;
+                this.height = 400;
+                
+                // Collections
+                this.locations = [];
+                this.people = [];
+                this.eventLog = [];
+                
+                // Statistics
+                this.statistics = {
+                    susceptible: 0,
+                    exposed: 0,
+                    infectious: 0,
+                    recovered: 0,
+                    deceased: 0,
+                    vaccinated: 0,
+                    newCases: 0,
+                    totalCases: 0,
+                    dailyStats: []
+                };
+                
+                // Monte Carlo results
+                this.monteCarloResults = [];
+            }
+            
+            initialize() {
+                // Clear existing data
+                this.locations = [];
+                this.people = [];
+                this.eventLog = [];
+                this.currentDay = 0;
+                
+                // Reset statistics
+                this.statistics = {
+                    susceptible: this.population,
+                    exposed: 0,
+                    infectious: 0,
+                    recovered: 0,
+                    deceased: 0,
+                    vaccinated: 0,
+                    newCases: 0,
+                    totalCases: 0,
+                    dailyStats: []
+                };
+                
+                // Set up effects based on intervention levels
+                if (this.socialDistancing === 'low') {
+                    this.socialDistancingEffect = 0.25;
+                } else if (this.socialDistancing === 'medium') {
+                    this.socialDistancingEffect = 0.5;
+                } else if (this.socialDistancing === 'high') {
+                    this.socialDistancingEffect = 0.75;
+                } else {
+                    this.socialDistancingEffect = 0;
+                }
+                
+                if (this.masking === 'low') {
+                    this.maskingEffect = 0.25;
+                } else if (this.masking === 'medium') {
+                    this.maskingEffect = 0.5;
+                } else if (this.masking === 'high') {
+                    this.maskingEffect = 0.75;
+                } else {
+                    this.maskingEffect = 0;
+                }
+                
+                // Create locations
+                this.createLocations();
+                
+                // Create people
+                this.createPopulation();
+                
+                // Seed initial infections
+                this.seedInfections();
+                
+                // Update UI
+                this.updateUI();
+                
+                // Log initialization
+                this.logEvent("Simulation initialized with " + this.population + " people");
+            }
+            
+            createLocations() {
+                // Create hospitals
+                const hospitals = [
+                    { x: 150, y: 100, name: "Orlando Regional Medical Center", capacity: 500 },
+                    { x: 300, y: 150, name: "AdventHealth Orlando", capacity: 450 },
+                    { x: 450, y: 200, name: "Dr. Phillips Hospital", capacity: 300 }
+                ];
+                
+                for (const h of hospitals) {
+                    this.locations.push(new Location(
+                        h.x, h.y, 'hospital', h.name, h.capacity, 0.4
+                    ));
+                }
+                
+                // Create airports
+                const airports = [
+                    { x: 500, y: 350, name: "Orlando International Airport", capacity: 2000 }
+                ];
+                
+                for (const a of airports) {
+                    this.locations.push(new Location(
+                        a.x, a.y, 'airport', a.name, a.capacity, 0.8
+                    ));
+                }
+                
+                // Create theme parks
+                const themeParks = [
+                    { x: 100, y: 300, name: "Magic Kingdom", capacity: 1500 },
+                    { x: 150, y: 350, name: "EPCOT", capacity: 1200 },
+                    { x: 400, y: 320, name: "Universal Studios", capacity: 1300 }
+                ];
+                
+                for (const tp of themeParks) {
+                    this.locations.push(new Location(
+                        tp.x, tp.y, 'themepark', tp.name, tp.capacity, 0.7
+                    ));
+                }
+                
+                // Create commercial areas
+                const commercialCount = 15;
+                for (let i = 0; i < commercialCount; i++) {
+                    this.locations.push(new Location(
+                        50 + Math.random() * 500,
+                        50 + Math.random() * 300,
+                        'commercial',
+                        `Commercial Area ${i+1}`,
+                        300 + Math.floor(Math.random() * 200),
+                        0.5 + Math.random() * 0.2
+                    ));
+                }
+                
+                // Create residential areas
+                const residentialCount = 20;
+                for (let i = 0; i < residentialCount; i++) {
+                    this.locations.push(new Location(
+                        20 + Math.random() * 560,
+                        20 + Math.random() * 360,
+                        'residential',
+                        `Residential Area ${i+1}`,
+                        Math.floor(this.population / residentialCount * (0.8 + Math.random() * 0.4)),
+                        0.3 + Math.random() * 0.2
+                    ));
+                }
+            }
+            
+            createPopulation() {
+                // Get residential locations
+                const residentialLocations = this.locations.filter(loc => loc.type === 'residential');
+                const nonResidentialLocations = this.locations.filter(loc => loc.type !== 'residential');
+                
+                // Create people and assign to homes
+                for (let i = 0; i < this.population; i++) {
+                    // Choose a random home location
+                    const homeIndex = Math.floor(Math.random() * residentialLocations.length);
+                    const homeLocation = residentialLocations[homeIndex];
+                    
+                    // Create person
+                    const person = new Person(i, homeLocation);
+                    
+                    // Add to home location
+                    homeLocation.addOccupant(person);
+                    
+                    // Assign daily locations (where they might go)
+                    const dailyLocationCount = 1 + Math.floor(Math.random() * 3); // 1-3 locations
+                    for (let j = 0; j < dailyLocationCount; j++) {
+                        const locationIndex = Math.floor(Math.random() * nonResidentialLocations.length);
+                        person.dailyLocations.push(nonResidentialLocations[locationIndex]);
+                    }
+                    
+                    this.people.push(person);
+                }
+                
+                // Update statistics
+                this.statistics.susceptible = this.population;
+            }
+            
+            seedInfections() {
+                // Find potential hosts based on seed location preference
+                let potentialHosts = this.people;
+                
+                if (this.seedLocations !== 'random') {
+                    const locationType = this.seedLocations;
+                    const typedLocations = this.locations.filter(loc => loc.type === locationType);
+                    
+                    if (typedLocations.length > 0) {
+                        // Find people currently at these locations
+                        potentialHosts = this.people.filter(person => 
+                            person.currentLocation.type === locationType ||
+                            person.dailyLocations.some(loc => loc.type === locationType)
+                        );
+                    }
+                }
+                
+                // If no valid hosts found or too few, fall back to random selection
+                if (potentialHosts.length < this.initialInfected) {
+                    potentialHosts = this.people;
+                }
+                
+                // Select random individuals to infect
+                const shuffled = [...potentialHosts].sort(() => 0.5 - Math.random());
+                const selectedHosts = shuffled.slice(0, this.initialInfected);
+                
+                // Infect selected hosts
+                for (const host of selectedHosts) {
+                    host.status = 'infectious'; // Skip exposed state for initial infections
+                    this.statistics.susceptible--;
+                    this.statistics.infectious++;
+                    this.statistics.totalCases++;
+                }
+                
+                // Log initial infections
+                this.logEvent(`Initial infection of ${this.initialInfected} people at ${this.seedLocations} locations`, 'critical');
+            }
+            
+            start() {
+                if (this.isRunning && !this.isPaused) return;
+                
+                if (this.isPaused) {
+                    this.isPaused = false;
+                    document.getElementById('pause-btn').textContent = 'Pause';
+                } else {
+                    this.isRunning = true;
+                    document.getElementById('start-btn').disabled = true;
+                    document.getElementById('pause-btn').disabled = false;
+                }
+                
+                this.simulationLoop();
+            }
+            
+            pause() {
+                if (!this.isRunning) return;
+                
+                this.isPaused = true;
+                document.getElementById('pause-btn').textContent = 'Resume';
+            }
+            
+            reset() {
+                this.isRunning = false;
+                this.isPaused = false;
+                document.getElementById('start-btn').disabled = false;
+                document.getElementById('pause-btn').disabled = true;
+                document.getElementById('pause-btn').textContent = 'Pause';
+                
+                this.initialize();
+            }
+            
+            simulationLoop() {
+                if (!this.isRunning) return;
+                if (this.isPaused) {
+                    setTimeout(() => this.simulationLoop(), 100);
+                    return;
+                }
+                
+                this.processDailyEvents();
+                
+                // Check if simulation is complete
+                if (this.currentDay >= this.simulationDays) {
+                    this.isRunning = false;
+                    this.logEvent("Simulation completed", "info");
+                    
+                    // Save results for Monte Carlo analysis
+                    if (this.totalRuns > 1) {
+                        this.saveMonteCarloResults();
+                        
+                        // Start next run or show summary
+                        if (this.currentRun < this.totalRuns) {
+                            this.currentRun++;
+                            this.reset();
+                            this.start();
+                        } else {
+                            this.showMonteCarloSummary();
+                        }
+                    }
+                    
+                    document.getElementById('start-btn').disabled = false;
+                    document.getElementById('pause-btn').disabled = true;
+                    
+                    return;
+                }
+                
+                // Schedule next step based on simulation speed
+                let interval = 100;
+                switch(this.simulationSpeed) {
+                    case 'slow': interval = 500; break;
+                    case 'medium': interval = 100; break;
+                    case 'fast': interval = 20; break;
+                    case 'very-fast': interval = 5; break;
+                }
+                
+                setTimeout(() => this.simulationLoop(), interval);
+            }
+            
+            processDailyEvents() {
+                // Increment day counter
+                this.currentDay++;
+                
+                // Reset daily counters
+                this.statistics.newCases = 0;
+                
+                // Update people's status
+                for (const person of this.people) {
+                    person.update(this);
+                }
+                
+                // Process disease transmission
+                this.processDiseaseTransmission();
+                
+                // Process vaccinations if applicable
+                if (this.currentDay >= this.vaccinationStartDay) {
+                    this.processVaccinations();
+                }
+                
+                // Save daily statistics
+                this.recordDailyStatistics();
+                
+                // Check for significant events
+                this.checkSignificantEvents();
+                
+                // Update UI
+                this.updateUI();
+            }
+            
+            processDiseaseTransmission() {
+                // Process for each location
+                for (const location of this.locations) {
+                    // Skip if no occupants
+                    if (location.occupants.length === 0) continue;
+                    
+                    // Find infectious people at this location
+                    const infectiousPeople = location.occupants.filter(p => p.status === 'infectious');
+                    if (infectiousPeople.length === 0) continue;
+                    
+                    // Find susceptible people at this location
+                    const susceptiblePeople = location.occupants.filter(p => p.status === 'susceptible');
+                    if (susceptiblePeople.length === 0) continue;
+                    
+                    // Calculate base transmission probability based on R0
+                    const locationRisk = location.getEffectiveTransmissionRisk(this);
+                    const baseTransmissionProbability = this.r0 * locationRisk / this.infectiousPeriod / 10;
+                    
+                    // For each susceptible person, calculate transmission probability
+                    for (const susceptiblePerson of susceptiblePeople) {
+                        // Each infectious person has a chance to infect
+                        for (const infectiousPerson of infectiousPeople) {
+                            // Monte Carlo sampling with some randomness
+                            const transmissionProbability = baseTransmissionProbability * (0.8 + Math.random() * 0.4);
+                            
+                            if (Math.random() < transmissionProbability) {
+                                if (susceptiblePerson.expose()) {
+                                    this.statistics.susceptible--;
+                                    this.statistics.exposed++;
+                                    break; // Once infected, no need to check other infectious people
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            processVaccinations() {
+                if (this.vaccinationRate <= 0) return;
+                
+                // Calculate how many people to vaccinate today
+                const vaccinationTarget = Math.floor(this.population * (this.vaccinationRate / 100));
+                
+                // Find eligible people (susceptible)
+                const eligiblePeople = this.people.filter(p => p.status === 'susceptible');
+                
+                // Shuffle array to randomize
+                const shuffled = [...eligiblePeople].sort(() => 0.5 - Math.random());
+                
+                // Vaccinate people up to target (or as many as eligible)
+                let vaccinatedCount = 0;
+                for (let i = 0; i < Math.min(vaccinationTarget, shuffled.length); i++) {
+                    if (shuffled[i].vaccinate()) {
+                        this.statistics.susceptible--;
+                        this.statistics.vaccinated++;
+                        vaccinatedCount++;
+                    }
+                }
+                
+                if (vaccinatedCount > 0 && this.currentDay === this.vaccinationStartDay) {
+                    this.logEvent(`Vaccination program started, ${vaccinatedCount} people vaccinated`, 'info');
+                }
+            }
+            
+            recordDailyStatistics() {
+                this.statistics.dailyStats.push({
+                    day: this.currentDay,
+                    susceptible: this.statistics.susceptible,
+                    exposed: this.statistics.exposed,
+                    infectious: this.statistics.infectious,
+                    recovered: this.statistics.recovered,
+                    deceased: this.statistics.deceased,
+                    vaccinated: this.statistics.vaccinated,
+                    newCases: this.statistics.newCases,
+                    totalCases: this.statistics.totalCases,
+                    hospitalized: this.getHospitalizedCount(),
+                    hospitalCapacity: this.getHospitalCapacity()
+                });
+            }
+            
+            checkSignificantEvents() {
+                // Hospital capacity check
+                const hospitalized = this.getHospitalizedCount();
+                const capacity = this.getHospitalCapacity();
+                
+                if (hospitalized > capacity && 
+                    this.statistics.dailyStats.length > 1 && 
+                    this.statistics.dailyStats[this.statistics.dailyStats.length - 2].hospitalized <= capacity) {
+                    this.logEvent(`Hospital capacity exceeded: ${hospitalized} patients with capacity for ${capacity}`, 'critical');
+                }
+                
+                // Check for peak in new cases
+                if (this.statistics.dailyStats.length > 14) { // At least 2 weeks of data
+                    const currentNewCases = this.statistics.newCases;
+                    const previousDays = this.statistics.dailyStats.slice(-14, -1); // Last 13 days
+                    const maxPreviousCases = Math.max(...previousDays.map(d => d.newCases));
+                    
+                    if (currentNewCases > maxPreviousCases && currentNewCases > 10) {
+                        this.logEvent(`New peak in daily cases: ${currentNewCases}`, 'warning');
+                    }
+                }
+                
+                // Check if epidemic is ending
+                if (this.statistics.infectious === 0 && this.statistics.exposed === 0 && this.statistics.totalCases > 10) {
+                    this.logEvent(`Epidemic appears to be over with ${this.statistics.totalCases} total cases and ${this.statistics.deceased} deaths`, 'info');
+                }
+                
+                // Check vaccination milestones
+                const vaccinationPercentage = (this.statistics.vaccinated / this.population) * 100;
+                const thresholds = [25, 50, 75];
+                
+                for (const threshold of thresholds) {
+                    if (vaccinationPercentage >= threshold && 
+                        (this.statistics.dailyStats.length <= 1 || 
+                         (this.statistics.dailyStats[this.statistics.dailyStats.length - 2].vaccinated / this.population) * 100 < threshold)) {
+                        this.logEvent(`${threshold}% of population now vaccinated`, 'info');
+                    }
+                }
+            }
+            
+            getHospitalizedCount() {
+                // Assume 20% of infectious cases require hospitalization
+                return Math.floor(this.statistics.infectious * 0.2);
+            }
+            
+            getHospitalCapacity() {
+                // Sum capacity of all hospitals
+                return this.locations
+                    .filter(loc => loc.type === 'hospital')
+                    .reduce((sum, hospital) => sum + hospital.capacity, 0);
+            }
+            
+            updateUI() {
+                // Update statistics display
+                document.getElementById('current-day').textContent = this.currentDay;
+                document.getElementById('total-days').textContent = this.simulationDays;
+                document.getElementById('total-population').textContent = this.population;
+                document.getElementById('susceptible-count').textContent = this.statistics.susceptible;
+                document.getElementById('exposed-count').textContent = this.statistics.exposed;
+                document.getElementById('infectious-count').textContent = this.statistics.infectious;
+                document.getElementById('recovered-count').textContent = this.statistics.recovered;
+                document.getElementById('deceased-count').textContent = this.statistics.deceased;
+                document.getElementById('vaccinated-count').textContent = this.statistics.vaccinated;
+                document.getElementById('total-cases').textContent = this.statistics.totalCases;
+                document.getElementById('new-cases').textContent = this.statistics.newCases;
+                document.getElementById('hospital-capacity').textContent = this.getHospitalCapacity();
+                document.getElementById('hospital-usage').textContent = this.getHospitalizedCount();
+            }
+            
+            logEvent(message, type = 'info') {
+                // Add to event log
+                this.eventLog.push({
+                    day: this.currentDay,
+                    message: message,
+                    type: type
+                });
+                
+                // Update UI
+                const eventLog = document.getElementById('event-log');
+                const eventElement = document.createElement('div');
+                eventElement.className = `event ${type}`;
+                eventElement.textContent = `Day ${this.currentDay}: ${message}`;
+                eventLog.appendChild(eventElement);
+                eventLog.scrollTop = eventLog.scrollHeight;
+            }
+            
+            saveMonteCarloResults() {
+                this.monteCarloResults.push({
+                    run: this.currentRun,
+                    totalCases: this.statistics.totalCases,
+                    peakDay: this.findPeakDay(),
+                    peakCases: this.findPeakCases(),
+                    finalSusceptible: this.statistics.susceptible,
+                    finalRecovered: this.statistics.recovered,
+                    finalDeceased: this.statistics.deceased,
+                    finalVaccinated: this.statistics.vaccinated,
+                    dailyStats: [...this.statistics.dailyStats]
+                });
+            }
+            
+            findPeakDay() {
+                if (this.statistics.dailyStats.length === 0) return 0;
+                
+                let peakDay = 0;
+                let peakCases = 0;
+                
+                for (const stat of this.statistics.dailyStats) {
+                    if (stat.newCases > peakCases) {
+                        peakCases = stat.newCases;
+                        peakDay = stat.day;
+                    }
+                }
+                
+                return peakDay;
+            }
+            
+            findPeakCases() {
+                if (this.statistics.dailyStats.length === 0) return 0;
+                return Math.max(...this.statistics.dailyStats.map(stat => stat.newCases));
+            }
+            
+            showMonteCarloSummary() {
+                // Calculate averages and ranges
+                const totalCases = this.monteCarloResults.map(r => r.totalCases);
+                const avgTotalCases = totalCases.reduce((a, b) => a + b, 0) / totalCases.length;
+                const minTotalCases = Math.min(...totalCases);
+                const maxTotalCases = Math.max(...totalCases);
+                
+                const deceased = this.monteCarloResults.map(r => r.finalDeceased);
+                const avgDeceased = deceased.reduce((a, b) => a + b, 0) / deceased.length;
+                const minDeceased = Math.min(...deceased);
+                const maxDeceased = Math.max(...deceased);
+                
+                const peakDays = this.monteCarloResults.map(r => r.peakDay);
+                const avgPeakDay = peakDays.reduce((a, b) => a + b, 0) / peakDays.length;
+                const minPeakDay = Math.min(...peakDays);
+                const maxPeakDay = Math.max(...peakDays);
+                
+                const message = `Monte Carlo Summary (${this.totalRuns} runs):
+                
+Total Cases: ${avgTotalCases.toFixed(0)} (range: ${minTotalCases}-${maxTotalCases})
+Deaths: ${avgDeceased.toFixed(0)} (range: ${minDeceased}-${maxDeceased})
+Peak Day: ${avgPeakDay.toFixed(0)} (range: ${minPeakDay}-${maxPeakDay})
+
+Intervention Effects:
+- Social Distancing: ${this.socialDistancing} (${(this.socialDistancingEffect * 100).toFixed(0)}% effective)
+- Masking: ${this.masking} (${(this.maskingEffect * 100).toFixed(0)}% effective)
+- Vaccination: ${this.vaccinationRate}% daily starting day ${this.vaccinationStartDay}
+
+Disease Parameters:
+- R₀: ${this.r0}
+- Incubation Period: ${this.incubationPeriod} days
+- Infectious Period: ${this.infectiousPeriod} days
+- Mortality Rate: ${this.mortalityRate}%`;
+                
+                alert(message);
+            }
+            
+            // Draw simulation state
+            draw(p) {
+                p.background(245);
+                
+                // Draw locations
+                for (const location of this.locations) {
+                    location.draw(p);
+                }
+                
+                // Draw people
+                for (const person of this.people) {
+                    person.draw(p);
+                }
+            }
+        }
+        
+        // Create p5.js sketch
+        let simulation = new EpidemicSimulation();
+        
+        const sketch = (p) => {
+            p.setup = function() {
+                const canvas = p.createCanvas(600, 400);
+                canvas.parent('simulation-canvas');
+                
+                // Initialize the simulation
+                setupSimulation();
+                
+                // Set up UI event handlers
+                setupEventListeners();
+            };
+            
+            p.draw = function() {
+                simulation.draw(p);
+            };
+        };
+        
+        function setupSimulation() {
+            // Get parameters from UI
+            simulation.population = parseInt(document.getElementById('population').value);
+            simulation.r0 = parseFloat(document.getElementById('r0').value);
+            simulation.incubationPeriod = parseInt(document.getElementById('incubation').value);
+            simulation.infectiousPeriod = parseInt(document.getElementById('infectious').value);
+            simulation.mortalityRate = parseFloat(document.getElementById('mortality').value);
+            simulation.initialInfected = parseInt(document.getElementById('initial-infected').value);
+            simulation.simulationDays = parseInt(document.getElementById('simulation-days').value);
+            simulation.seedLocations = document.getElementById('seed-locations').value;
+            simulation.seasonality = document.getElementById('seasonality').value;
+            simulation.socialDistancing = document.getElementById('social-distancing').value;
+            simulation.masking = document.getElementById('masking').value;
+            simulation.vaccinationRate = parseFloat(document.getElementById('vaccination-rate').value);
+            simulation.vaccinationStartDay = parseInt(document.getElementById('vaccination-start').value);
+            simulation.simulationSpeed = document.getElementById('simulation-speed').value;
+            
+            // Initialize the simulation
+            simulation.initialize();
+        }
+        
+        function setupEventListeners() {
+            document.getElementById('start-btn').addEventListener('click', () => {
+                simulation.start();
+            });
+            
+            document.getElementById('pause-btn').addEventListener('click', () => {
+                if (simulation.isPaused) {
+                    simulation.start();
+                } else {
+                    simulation.pause();
+                }
+            });
+            
+            document.getElementById('reset-btn').addEventListener('click', () => {
+                simulation.reset();
+            });
+            
+            document.getElementById('new-params-btn').addEventListener('click', () => {
+                setupSimulation();
+            });
+            
+            document.getElementById('run-monte-carlo-btn').addEventListener('click', () => {
+                const runs = parseInt(document.getElementById('monte-carlo-runs').value);
+                if (runs > 0) {
+                    simulation.totalRuns = runs;
+                    simulation.currentRun = 1;
+                    simulation.monteCarloResults = [];
+                    simulation.reset();
+                    simulation.start();
+                }
+            });
+        }
+        
+        // Start the p5.js sketch
+        new p5(sketch);
+    </script>
+</body>
+</html>
