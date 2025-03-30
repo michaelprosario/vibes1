@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galaga Clone</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.7.0/lib/p5.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #000;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        // Game states enum
+        const GameState = {
+            START: 0,
+            PLAYING: 1,
+            STAGE_TRANSITION: 2,
+            GAME_OVER: 3,
+            PAUSED: 4,
+            BONUS_STAGE: 5
+        };
+
+        // Game configuration
+        const Config = {
+            CANVAS_WIDTH: 600,
+            CANVAS_HEIGHT: 800,
+            FORMATION_TOP: 100,
+            GRID_ROWS: 5,
+            GRID_COLS: 10,
+            GRID_SPACING_X: 40,
+            GRID_SPACING_Y: 40,
+            PLAYER_START_X: 300,
+            PLAYER_START_Y: 700,
+            PLAYER_SPEED: 5,
+            PROJECTILE_SPEED: 10,
+            ENEMY_PROJECTILE_SPEED: 5,
+            POWER_UP_SPEED: 2,
+            STAR_COUNT: 100,
+            EXPLOSION_DURATION: 500
+        };
+
+        // Game manager class
+        class GameManager {
+            constructor() {
+                this.gameState = GameState.START;
+                this.score = 0;
+                this.highScore = 0;
+                this.lives = 3;
+                this.stage = 1;
+                this.stageTransitionTimer = 0;
+                this.bombs = 3;
+                this.gameTime = 0;
+                this.lastEnemyAttackTime = 0;
+                this.attackCooldown = 1000; // ms
+                this.difficultyModifier = 1.0;
+                this.enemyTypes = [
+                    { type: 'bee', points: 50, color: '#ff0000', health: 1, size: 20 },
+                    { type: 'butterfly', points: 80, color: '#00ff00', health: 1, size: 25 },
+                    { type: 'boss', points: 150, color: '#0000ff', health: 2, size: 30, canCapture: true }
+                ];
+            }
+
+            reset() {
+                this.gameState = GameState.PLAYING;
+                this.score = 0;
+                this.lives = 3;
+                this.stage = 1;
+                this.bombs = 3;
+                this.gameTime = 0;
+                this.difficultyModifier = 1.0;
+            }
+
+            update(deltaTime) {
+                this.gameTime += deltaTime;
+            }
+
+            startStageTransition() {
+                this.stage++;
+                this.stageTransitionTimer = 3000;
+                this.gameState = GameState.STAGE_TRANSITION;
+                this.difficultyModifier = 1.0 + (this.stage * 0.1);
+            }
+
+            updateStageTransition(deltaTime) {
+                this.stageTransitionTimer -= deltaTime;
+                if (this.stageTransitionTimer <= 0) {
+                    this.gameState = GameState.PLAYING;
+                    return true;
+                }
+                return false;
+            }
+
+            addScore(points) {
+                this.score += points;
+                if (this.score > this.highScore) {
+                    this.highScore = this.score;
+                }
+            }
+
+            loseLife() {
+                this.lives--;
+                if (this.lives <= 0) {
+                    this.gameState = GameState.GAME_OVER;
+                    return true;
+                }
+                return false;
+            }
+
+            useBomb() {
+                if (this.bombs > 0) {
+                    this.bombs--;
+                    return true;
+                }
+                return false;
+            }
+
+            togglePause() {
+                if (this.gameState === GameState.PLAYING) {
+                    this.gameState = GameState.PAUSED;
+                } else if (this.gameState === GameState.PAUSED) {
+                    this.gameState = GameState.PLAYING;
+                }
+            }
+        }
+
+        // Player class
+        class Player {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = 30;
+                this.height = 30;
+                this.speed = Config.PLAYER_SPEED;
+                this.isCaptured = false;
+                this.isHit = false;
+                this.hitTimer = 0;
+                this.dualFighter = false;
+                this.dualFighterOffset = 40;
+            }
+
+            update(deltaTime) {
+                // Handle player movement
+                if (keyIsDown(LEFT_ARROW)) {
+                    this.x = max(this.width / 2, this.x - this.speed);
+                }
+                if (keyIsDown(RIGHT_ARROW)) {
+                    this.x = min(width - this.width / 2, this.x + this.speed);
+                }
+
+                // Update hit animation
+                if (this.isHit) {
+                    this.hitTimer -= deltaTime;
+                    if (this.hitTimer <= 0) {
+                        this.isHit = false;
+                    }
+                }
+            }
+
+            draw() {
+                if (!this.isCaptured) {
+                    this.drawShip(this.x, this.y, this.isHit);
+                    
+                    // Draw dual fighter if active
+                    if (this.dualFighter) {
+                        this.drawShip(this.x - this.dualFighterOffset, this.y, this.isHit);
+                    }
+                }
+            }
+
+            drawShip(x, y, isHit, isCaptured = false) {
+                push();
+                translate(x, y);
+                
+                if (isHit) {
+                    if (frameCount % 6 < 3) {
+                        fill(255, 0, 0);
+                    } else {
+                        fill(255, 255, 255);
+                    }
+                } else if (isCaptured) {
+                    // Captured ship has a different color
+                    fill(100, 100, 255);
+                } else {
+                    fill(255, 255, 255);
+                }
+                
+                // Ship body
+                triangle(0, -15, -15, 15, 15, 15);
+                
+                // Ship cockpit
+                fill(0, 255, 255);
+                rect(-5, -5, 10, 10);
+                
+                pop();
+            }
+
+            fireProjectile() {
+                let projectiles = [];
+                
+                // Create projectile at player position
+                projectiles.push(new Projectile(this.x, this.y - 15, false));
+                
+                // If dual fighter, create a second projectile
+                if (this.dualFighter) {
+                    projectiles.push(new Projectile(this.x - this.dualFighterOffset, this.y - 15, false));
+                }
+                
+                return projectiles;
+            }
+
+            hit() {
+                this.isHit = true;
+                this.hitTimer = 1000;
+                this.dualFighter = false;
+                return new Explosion(this.x, this.y);
+            }
+
+            capture() {
+                this.isCaptured = true;
+                const capturedShip = {
+                    x: this.x,
+                    y: this.y,
+                    width: this.width,
+                    height: this.height
+                };
+                
+                // Reset position
+                this.x = Config.PLAYER_START_X;
+                this.y = Config.PLAYER_START_Y;
+                this.isCaptured = false;
+                
+                return capturedShip;
+            }
+
+            rescue() {
+                this.dualFighter = true;
+            }
+        }
+
+        // Base Entity class for common properties
+        class Entity {
+            constructor(x, y, width, height) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+            }
+
+            // Check collision with another entity
+            collidesWith(other) {
+                // For entities with size property (circular collision)
+                if (other.size) {
+                    return dist(this.x, this.y, other.x, other.y) < (this.width / 2 + other.size / 2);
+                }
+                
+                // Rectangle collision
+                return (
+                    this.x + this.width / 2 > other.x - other.width / 2 &&
+                    this.x - this.width / 2 < other.x + other.width / 2 &&
+                    this.y + this.height / 2 > other.y - other.height / 2 &&
+                    this.y - this.height / 2 < other.y + other.height / 2
+                );
+            }
+        }
+
+        // Projectile class
+        class Projectile extends Entity {
+            constructor(x, y, isEnemy = false) {
+                const width = 4;
+                const height = isEnemy ? 10 : 15;
+                super(x, y, width, height);
+                
+                this.isEnemy = isEnemy;
+                this.speed = isEnemy ? Config.ENEMY_PROJECTILE_SPEED : Config.PROJECTILE_SPEED;
+                this.color = isEnemy ? '#ff0000' : '#ffff00';
+            }
+
+            update() {
+                this.y += this.isEnemy ? this.speed : -this.speed;
+                return this.y < 0 || this.y > height;
+            }
+
+            draw() {
+                fill(this.color);
+                noStroke();
+                rect(this.x - this.width / 2, this.y, this.width, this.height);
+            }
+        }
+
+        // Enemy class
+        class Enemy extends Entity {
+            constructor(x, y, type, typeData, stage) {
+                super(x, y, typeData.size, typeData.size);
+                
+                this.type = type;
+                this.points = typeData.points;
+                this.color = typeData.color;
+                this.health = typeData.health * (1 + stage * 0.1); // Scale with stage
+                this.size = typeData.size;
+                this.canCapture = typeData.canCapture || false;
+                
+                this.formationX = x;
+                this.formationY = y;
+                this.inFormation = true;
+                this.attacking = false;
+                this.attackPattern = null;
+                this.attackStep = 0;
+                this.fireRate = 0.002 * stage; // Scale with stage
+            }
+
+            update(gameTime, player) {
+                // Enemy in formation
+                if (this.inFormation) {
+                    // Simple formation movement - slight sideways movement
+                    this.formationX += sin(frameCount * 0.02) * 0.5;
+                    this.x = this.formationX;
+                    
+                    // Random firing
+                    if (random() < this.fireRate) {
+                        return this.fireProjectile();
+                    }
+                }
+                // Enemy attacking
+                else if (this.attacking) {
+                    this.attackStep += 0.02;
+                    
+                    switch (this.attackPattern) {
+                        case 'dive':
+                            // Simple dive attack
+                            this.x += sin(this.attackStep * 3) * 5;
+                            this.y += 3;
+                            break;
+                        case 'swoop':
+                            // Swooping attack
+                            this.x = width / 2 + sin(this.attackStep) * (width / 2 - 50);
+                            this.y = Config.FORMATION_TOP + 100 + sin(this.attackStep * 2) * 200;
+                            break;
+                        case 'zigzag':
+                            // Zigzag attack
+                            this.x += sin(this.attackStep * 10) * 8;
+                            this.y += 2;
+                            break;
+                    }
+                    
+                    // Check if enemy should return to formation
+                    if (this.y > height || this.attackStep > 10) {
+                        this.inFormation = true;
+                        this.attacking = false;
+                        this.x = this.formationX;
+                        this.y = this.formationY;
+                    }
+                    
+                    // Higher chance to fire while attacking
+                    if (random() < this.fireRate * 3) {
+                        return this.fireProjectile();
+                    }
+                }
+                
+                return null;
+            }
+
+            startAttack(pattern) {
+                this.attackPattern = pattern;
+                this.attacking = true;
+                this.inFormation = false;
+                this.attackStep = 0;
+            }
+
+            draw() {
+                fill(this.color);
+                noStroke();
+                
+                // Different shapes for different enemy types
+                if (this.type === 'bee') {
+                    ellipse(this.x, this.y, this.size, this.size);
+                } else if (this.type === 'butterfly') {
+                    rectMode(CENTER);
+                    rect(this.x, this.y, this.size, this.size);
+                    rectMode(CORNER);
+                } else if (this.type === 'boss') {
+                    this.drawBossEnemy();
+                }
+            }
+
+            drawBossEnemy() {
+                // Complex shape for boss enemy
+                push();
+                translate(this.x, this.y);
+                
+                // Main body
+                fill(this.color);
+                rect(-this.size / 2, -this.size / 2, this.size, this.size);
+                
+                // Wings
+                triangle(-this.size / 2, 0, -this.size, -this.size / 3, -this.size, this.size / 3);
+                triangle(this.size / 2, 0, this.size, -this.size / 3, this.size, this.size / 3);
+                
+                // Eyes
+                fill(255, 0, 0);
+                circle(-this.size / 4, -this.size / 4, this.size / 5);
+                circle(this.size / 4, -this.size / 4, this.size / 5);
+                
+                pop();
+            }
+
+            fireProjectile() {
+                return new Projectile(this.x, this.y + this.size / 2, true);
+            }
+
+            takeDamage() {
+                this.health--;
+                return this.health <= 0;
+            }
+        }
+
+        // Explosion class
+        class Explosion {
+            constructor(x, y, size = 30) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.timer = Config.EXPLOSION_DURATION;
+            }
+
+            update(deltaTime) {
+                this.timer -= deltaTime;
+                return this.timer <= 0;
+            }
+
+            draw() {
+                let alpha = map(this.timer, 0, Config.EXPLOSION_DURATION, 0, 255);
+                let size = map(this.timer, 0, Config.EXPLOSION_DURATION, this.size * 2, this.size);
+                
+                fill(255, 200, 0, alpha);
+                ellipse(this.x, this.y, size, size);
+                
+                fill(255, 100, 0, alpha);
+                ellipse(this.x, this.y, size * 0.7, size * 0.7);
+            }
+        }
+
+        // PowerUp class
+        class PowerUp extends Entity {
+            constructor(x, y, type = null) {
+                super(x, y, 20, 20);
+                
+                const POWER_UP_TYPES = ['rapidFire', 'shield', 'extraLife', 'dualFighter'];
+                this.type = type || random(POWER_UP_TYPES);
+                this.speed = Config.POWER_UP_SPEED;
+                
+                // Set visual properties based on type
+                switch (this.type) {
+                    case 'rapidFire':
+                        this.color = '#ffff00';
+                        this.symbol = 'R';
+                        break;
+                    case 'shield':
+                        this.color = '#00ffff';
+                        this.symbol = 'S';
+                        break;
+                    case 'extraLife':
+                        this.color = '#00ff00';
+                        this.symbol = 'L';
+                        break;
+                    case 'dualFighter':
+                        this.color = '#ff00ff';
+                        this.symbol = 'D';
+                        break;
+                }
+            }
+
+            update() {
+                this.y += this.speed;
+                return this.y > height;
+            }
+
+            draw() {
+                fill(255, 255, 255);
+                stroke(this.color);
+                strokeWeight(2);
+                ellipse(this.x, this.y, 20, 20);
+                noStroke();
+                
+                fill(this.color);
+                textSize(14);
+                textAlign(CENTER, CENTER);
+                text(this.symbol, this.x, this.y);
+            }
+
+            applyEffect(player, gameManager) {
+                switch (this.type) {
+                    case 'rapidFire':
+                        // Temporary effect would be implemented here
+                        gameManager.addScore(500);
+                        break;
+                    case 'shield':
+                        // Temporary effect would be implemented here
+                        gameManager.addScore(500);
+                        break;
+                    case 'extraLife':
+                        gameManager.lives++;
+                        break;
+                    case 'dualFighter':
+                        player.rescue();
+                        break;
+                }
+            }
+        }
+
+        // Star class for background effect
+        class Star {
+            constructor() {
+                this.x = random(width);
+                this.y = random(height);
+                this.size = random(1, 3);
+                this.speed = random(1, 3);
+            }
+
+            update() {
+                this.y += this.speed;
+                
+                // Reset stars that go off screen
+                if (this.y > height) {
+                    this.y = 0;
+                    this.x = random(width);
+                }
+            }
+
+            draw() {
+                fill(255);
+                noStroke();
+                circle(this.x, this.y, this.size);
+            }
+        }
+
+        // CapturedShip class
+        class CapturedShip {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = 30;
+                this.height = 30;
+            }
+
+            update(captor) {
+                if (captor) {
+                    this.x = captor.x;
+                    this.y = captor.y + 20;
+                    return false;
+                }
+                return true; // Captor destroyed, release ship
+            }
+
+            draw() {
+                push();
+                translate(this.x, this.y);
+                
+                // Captured ship has a different color
+                fill(100, 100, 255);
+                
+                // Ship body
+                triangle(0, -15, -15, 15, 15, 15);
+                
+                // Ship cockpit
+                fill(0, 255, 255);
+                rect(-5, -5, 10, 10);
+                
+                pop();
+            }
+        }
+
+        // Game UI class
+        class UI {
+            constructor(gameManager) {
+                this.gameManager = gameManager;
+            }
+
+            drawPlaying() {
+                textAlign(LEFT, TOP);
+                fill(255);
+                textSize(20);
+                
+                // Score
+                text(`SCORE: ${this.gameManager.score}`, 20, 20);
+                
+                // High score
+                text(`HIGH: ${this.gameManager.highScore}`, width - 150, 20);
+                
+                // Stage
+                text(`STAGE: ${this.gameManager.stage}`, width / 2 - 40, 20);
+                
+                // Lives
+                text(`LIVES:`, 20, height - 30);
+                for (let i = 0; i < this.gameManager.lives; i++) {
+                    push();
+                    translate(100 + i * 30, height - 20);
+                    fill(255, 255, 255);
+                    triangle(0, -8, -8, 8, 8, 8);
+                    pop();
+                }
+                
+                // Bombs
+                text(`BOMBS:`, width - 150, height - 30);
+                for (let i = 0; i < this.gameManager.bombs; i++) {
+                    fill(255, 0, 0);
+                    ellipse(width - 100 + i * 20, height - 20, 10, 10);
+                }
+            }
+
+            drawStart() {
+                textAlign(CENTER, CENTER);
+                
+                // Title
+                fill(255, 255, 0);
+                textSize(60);
+                text("GALAGA", width / 2, height / 3);
+                
+                // Instructions
+                fill(255);
+                textSize(20);
+                text("Arrow keys to move", width / 2, height / 2);
+                text("SPACE to fire", width / 2, height / 2 + 30);
+                text("B to use bomb", width / 2, height / 2 + 60);
+                text("P to pause", width / 2, height / 2 + 90);
+                
+                // Start prompt
+                fill(255);
+                textSize(24);
+                if (Math.floor(frameCount / 30) % 2 === 0) {
+                    text("PRESS ENTER TO START", width / 2, height * 3 / 4);
+                }
+                
+                // Draw player ship at bottom for visual
+                push();
+                translate(width / 2, height - 100);
+                fill(255, 255, 255);
+                triangle(0, -15, -15, 15, 15, 15);
+                fill(0, 255, 255);
+                rect(-5, -5, 10, 10);
+                pop();
+            }
+
+            drawStageTransition() {
+                textAlign(CENTER, CENTER);
+                fill(255, 255, 0);
+                textSize(40);
+                text(`STAGE ${this.gameManager.stage}`, width / 2, height / 2);
+                
+                textSize(24);
+                fill(255);
+                text(`GET READY!`, width / 2, height / 2 + 50);
+            }
+
+            drawGameOver() {
+                textAlign(CENTER, CENTER);
+                fill(255, 0, 0);
+                textSize(60);
+                text("GAME OVER", width / 2, height / 3);
+                
+                fill(255);
+                textSize(30);
+                text(`SCORE: ${this.gameManager.score}`, width / 2, height / 2);
+                text(`HIGH SCORE: ${this.gameManager.highScore}`, width / 2, height / 2 + 40);
+                
+                textSize(24);
+                if (Math.floor(frameCount / 30) % 2 === 0) {
+                    text("PRESS ENTER TO RESTART", width / 2, height * 3 / 4);
+                }
+            }
+
+            drawPaused() {
+                textAlign(CENTER, CENTER);
+                fill(255);
+                textSize(40);
+                text("PAUSED", width / 2, height / 2);
+                
+                textSize(20);
+                text("Press P to resume", width / 2, height / 2 + 40);
+            }
+        }
+
+        // Main game class that coordinates all game elements
+        class Game {
+            constructor() {
+                this.gameManager = new GameManager();
+                this.player = new Player(Config.PLAYER_START_X, Config.PLAYER_START_Y);
+                this.ui = new UI(this.gameManager);
+                this.projectiles = [];
+                this.enemyProjectiles = [];
+                this.enemies = [];
+                this.explosions = [];
+                this.powerUps = [];
+                this.stars = [];
+                this.capturedShip = null;
+                
+                // Create starfield
+                for (let i = 0; i < Config.STAR_COUNT; i++) {
+                    this.stars.push(new Star());
+                }
+            }
+
+            reset() {
+                this.gameManager.reset();
+                this.player = new Player(Config.PLAYER_START_X, Config.PLAYER_START_Y);
+                this.projectiles = [];
+                this.enemyProjectiles = [];
+                this.enemies = [];
+                this.explosions = [];
+                this.powerUps = [];
+                this.capturedShip = null;
+                
+                this.createEnemyFormation();
+            }
+
+            createEnemyFormation() {
+                this.enemies = [];
+                
+                for (let row = 0; row < Config.GRID_ROWS; row++) {
+                    for (let col = 0; col < Config.GRID_COLS; col++) {
+                        // Determine enemy type based on row
+                        let enemyType;
+                        if (row === 0) {
+                            enemyType = this.gameManager.enemyTypes[2]; // Boss
+                        } else if (row >= 1 && row <= 2) {
+                            enemyType = this.gameManager.enemyTypes[1]; // Butterfly
+                        } else {
+                            enemyType = this.gameManager.enemyTypes[0]; // Bee
+                        }
+                        
+                        // Create enemy
+                        const x = col * Config.GRID_SPACING_X + 100;
+                        const y = row * Config.GRID_SPACING_Y + Config.FORMATION_TOP;
+                        
+                        this.enemies.push(new Enemy(
+                            x, y, 
+                            enemyType.type, 
+                            enemyType,
+                            this.gameManager.stage
+                        ));
+                    }
+                }
+            }
+
+            update(deltaTime) {
+                // Update game time
+                this.gameManager.update(deltaTime);
+                
+                // Update background stars
+                for (let star of this.stars) {
+                    star.update();
+                }
+                
+                switch (this.gameManager.gameState) {
+                    case GameState.PLAYING:
+                        this.updatePlaying(deltaTime);
+                        break;
+                    case GameState.STAGE_TRANSITION:
+                        if (this.gameManager.updateStageTransition(deltaTime)) {
+                            this.createEnemyFormation();
+                        }
+                        break;
+                }
+            }
+
+            updatePlaying(deltaTime) {
+                // Update player
+                this.player.update(deltaTime);
+                
+                // Update projectiles
+                for (let i = this.projectiles.length - 1; i >= 0; i--) {
+                    if (this.projectiles[i].update()) {
+                        this.projectiles.splice(i, 1);
+                        continue;
+                    }
+                    
+                    // Check for collisions with enemies
+                    for (let j = this.enemies.length - 1; j >= 0; j--) {
+                        if (this.projectiles[i].collidesWith(this.enemies[j])) {
+                            if (this.enemies[j].takeDamage()) {
+                                // Enemy destroyed
+                                this.gameManager.addScore(this.enemies[j].points);
+                                
+                                // Create explosion
+                                this.explosions.push(new Explosion(this.enemies[j].x, this.enemies[j].y));
+                                
+                                // Chance to drop power-up
+                                if (random() < 0.1) {
+                                    this.powerUps.push(new PowerUp(this.enemies[j].x, this.enemies[j].y));
+                                }
+                                
+                                // Remove enemy
+                                this.enemies.splice(j, 1);
+                            }
+                            
+                            // Remove projectile
+                            this.projectiles.splice(i, 1);
+                            break;
+                        }
+                    }
+                }
+                
+                // Update enemy projectiles
+                for (let i = this.enemyProjectiles.length - 1; i >= 0; i--) {
+                    if (this.enemyProjectiles[i].update()) {
+                        this.enemyProjectiles.splice(i, 1);
+                        continue;
+                    }
+                    
+                    // Check for collision with player
+                    if (!this.player.isHit && this.enemyProjectiles[i].collidesWith(this.player)) {
+                        this.explosions.push(this.player.hit());
+                        if (this.gameManager.loseLife()) {
+                            // Game over handled in game manager
+                        }
+                        this.enemyProjectiles.splice(i, 1);
+                    }
+                }
+                
+                // Update enemies
+                this.updateEnemies();
+                
+                // Update power-ups
+                for (let i = this.powerUps.length - 1; i >= 0; i--) {
+                    if (this.powerUps[i].update()) {
+                        this.powerUps.splice(i, 1);
+                        continue;
+                    }
+                    
+                    // Check for collision with player
+                    if (this.powerUps[i].collidesWith(this.player)) {
+                        this.powerUps[i].applyEffect(this.player, this.gameManager);
+                        this.powerUps.splice(i, 1);
+                    }
+                }
+                
+                // Update explosions
+                for (let i = this.explosions.length - 1; i >= 0; i--) {
+                    if (this.explosions[i].update(deltaTime)) {
+                        this.explosions.splice(i, 1);
+                    }
+                }
+                
+                // Update captured ship
+                if (this.capturedShip) {
+                    // Find captor
+                    const captor = this.enemies.find(e => e.type === 'boss' && e.canCapture);
+                    if (this.capturedShip.update(captor)) {
+                        // Captor destroyed, drop dual fighter power-up
+                        this.powerUps.push(new PowerUp(this.capturedShip.x, this.capturedShip.y, 'dualFighter'));
+                        this.capturedShip = null;
+                    }
+                }
+                
+                // Check if stage is cleared
+                if (this.enemies.length === 0) {
+                    this.gameManager.startStageTransition();
+                }
+            }
+
+            updateEnemies() {
+                // Determine if a new attack should start
+                if (this.gameManager.gameTime - this.gameManager.lastEnemyAttackTime > this.gameManager.attackCooldown) {
+                    // Find enemies in formation
+                    let formationEnemies = this.enemies.filter(e => e.inFormation);
+                    
+                    if (formationEnemies.length > 0 && random() < 0.1) {
+                        // Select a random enemy to attack
+                        let attackingEnemy = random(formationEnemies);
+                        
+                        // Define attack patterns
+                        const ATTACK_PATTERNS = ['dive', 'swoop', 'zigzag'];
+                        
+                        // Select a random attack pattern
+                        let pattern = random(ATTACK_PATTERNS);
+                        attackingEnemy.startAttack(pattern);
+                        
+                        this.gameManager.lastEnemyAttackTime = this.gameManager.gameTime;
+                    }
+                }
+                
+                // Update each enemy
+                for (let i = 0; i < this.enemies.length; i++) {
+                    const projectile = this.enemies[i].update(this.gameManager.gameTime, this.player);
+                    
+                    if (projectile) {
+                        this.enemyProjectiles.push(projectile);
+                    }
+                    
+                    // Check for collision with player while attacking
+                    if (this.enemies[i].attacking && !this.player.isHit) {
+                        if (dist(this.enemies[i].x, this.enemies[i].y, this.player.x, this.player.y) < 
+                            (this.enemies[i].size + this.player.width) / 2) {
+                            
+                            // If boss enemy can capture ships
+                            if (this.enemies[i].type === 'boss' && this.enemies[i].canCapture && 
+                                !this.player.dualFighter && !this.capturedShip) {
+                                this.capturedShip = new CapturedShip(this.player.x, this.player.y);
+                                if (this.gameManager.loseLife()) {
+                                    // Game over handled in game manager
+                                }
+                            } else {
+                                this.explosions.push(this.player.hit());
+                                if (this.gameManager.loseLife()) {
+                                    // Game over handled in game manager
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            draw() {
+                background(0);
+                
+                // Draw stars
+                for (let star of this.stars) {
+                    star.draw();
+                }
+                
+                switch (this.gameManager.gameState) {
+                    case GameState.START:
+                        this.ui.drawStart();
+                        break;
+                    case GameState.PLAYING:
+                        this.drawPlaying();
+                        break;
+                    case GameState.STAGE_TRANSITION:
+                        this.ui.drawStageTransition();
+                        break;
+                    case GameState.GAME_OVER:
+                        this.ui.drawGameOver();
+                        break;
+                    case GameState.PAUSED:
+                        this.drawPlaying();
+                        this.ui.drawPaused();
+                        break;
+                }
+            }
+
+            drawPlaying() {
+                // Draw player
+                this.player.draw();
+                
+                // Draw projectiles
+                for (let projectile of this.projectiles) {
+                    projectile.draw();
+                }
+                
+                // Draw enemy projectiles
+                for (let projectile of this.enemyProjectiles) {
+                    projectile.draw();
+                }
+                
+                // Draw enemies
+                for (let enemy of this.enemies) {
+                    enemy.draw();
+                }
+                
+                // Draw captured ship
+                if (this.capturedShip) {
+                    this.capturedShip.draw();
+                }
+                
+                // Draw power-ups
+                for (let powerUp of this.powerUps) {
+                    powerUp.draw();
+                }
+                
+                // Draw explosions
+                for (let explosion of this.explosions) {
+                    explosion.draw();
+                }
+                
+                // Draw UI
+                this.ui.drawPlaying();
+            }
+
+            handleKeyPress(keyCode, key) {
+                // Start game
+                if (keyCode === ENTER) {
+                    if (this.gameManager.gameState === GameState.START || this.gameManager.gameState === GameState.GAME_OVER) {
+                        this.reset();
+                    }
+                }
+                
+                // Fire projectile
+                if (keyCode === 32 && this.gameManager.gameState === GameState.PLAYING && !this.player.isHit) { // Space bar
+                    const newProjectiles = this.player.fireProjectile();
+                    this.projectiles.push(...newProjectiles);
+                }
+                
+                // Use bomb
+                if (key === 'b' && this.gameManager.gameState === GameState.PLAYING) {
+                    if (this.gameManager.useBomb()) {
+                        this.useBomb();
+                    }
+                }
+                
+                // Pause game
+                if (key === 'p') {
+                    this.gameManager.togglePause();
+                }
+            }
+
+            useBomb() {
+                // Destroy all enemies on screen
+                for (let i = this.enemies.length - 1; i >= 0; i--) {
+                    // Create explosion
+                    this.explosions.push(new Explosion(this.enemies[i].x, this.enemies[i].y));
+                    
+                    // Add score
+                    this.gameManager.addScore(this.enemies[i].points);
+                    
+                    // Chance to drop power-up
+                    if (random() < 0.1) {
+                        this.powerUps.push(new PowerUp(this.enemies[i].x, this.enemies[i].y));
+                    }
+                }
+                
+                // Clear enemies and projectiles
+                this.enemies = [];
+                this.enemyProjectiles = [];
+                
+                // Create large explosion effect
+                for (let i = 0; i < 10; i++) {
+                    this.explosions.push(new Explosion(random(width), random(height), 100));
+                }
+            }
+        }
+
+        // Global game instance
+        let game;
+
+        function setup() {
+            createCanvas(Config.CANVAS_WIDTH, Config.CANVAS_HEIGHT);
+            game = new Game();
+        }
+
+        function draw() {
+            game.update(deltaTime);
+            game.draw();
+        }
+
+        function keyPressed() {
+            game.handleKeyPress(keyCode, key);
+        }
+    </script>
+</body>
+</html>

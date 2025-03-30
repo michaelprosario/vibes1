@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galaga Clone</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.7.0/lib/p5.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #000;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        // Game states
+        const GAME_STATE = {
+            START: 0,
+            PLAYING: 1,
+            STAGE_TRANSITION: 2,
+            GAME_OVER: 3,
+            PAUSED: 4
+        };
+        
+        // Game variables
+        let gameState = GAME_STATE.START;
+        let score = 0;
+        let highScore = 0;
+        let lives = 3;
+        let stage = 1;
+        let stageTransitionTimer = 0;
+        let bombs = 3;
+        
+        // Player ship
+        let player = {
+            x: 0,
+            y: 0,
+            width: 30,
+            height: 30,
+            speed: 5,
+            isCaptured: false,
+            isHit: false,
+            hitTimer: 0,
+            dualFighter: false
+        };
+        
+        // Projectiles
+        let projectiles = [];
+        let enemyProjectiles = [];
+        
+        // Enemies
+        let enemies = [];
+        let enemyTypes = [
+            { type: 'bee', points: 50, color: '#ff0000', health: 1, size: 20 },
+            { type: 'butterfly', points: 80, color: '#00ff00', health: 1, size: 25 },
+            { type: 'boss', points: 150, color: '#0000ff', health: 2, size: 30, canCapture: true }
+        ];
+        
+        // Power-ups
+        let powerUps = [];
+        const POWER_UP_TYPES = ['rapidFire', 'shield', 'extraLife'];
+        
+        // Formation grid
+        const GRID_ROWS = 5;
+        const GRID_COLS = 10;
+        const GRID_SPACING_X = 40;
+        const GRID_SPACING_Y = 40;
+        const FORMATION_TOP = 100;
+        
+        // Animation variables
+        let stars = [];
+        let explosions = [];
+        
+        // Attack patterns
+        const ATTACK_PATTERNS = [
+            { name: 'dive', probability: 0.005 },
+            { name: 'swoop', probability: 0.003 },
+            { name: 'zigzag', probability: 0.002 }
+        ];
+        
+        // Captured ship
+        let capturedShip = null;
+        
+        // Game timing
+        let lastEnemyAttackTime = 0;
+        let attackCooldown = 1000; // ms
+        let gameTime = 0;
+        
+        function setup() {
+            createCanvas(600, 800);
+            resetGame();
+            
+            // Create starfield
+            for (let i = 0; i < 100; i++) {
+                stars.push({
+                    x: random(width),
+                    y: random(height),
+                    size: random(1, 3),
+                    speed: random(1, 3)
+                });
+            }
+        }
+        
+        function resetGame() {
+            // Reset player
+            player.x = width / 2;
+            player.y = height - 100;
+            player.isHit = false;
+            player.hitTimer = 0;
+            player.dualFighter = false;
+            player.isCaptured = false;
+            
+            // Reset game variables
+            score = 0;
+            lives = 3;
+            stage = 1;
+            bombs = 3;
+            gameTime = 0;
+            
+            // Clear arrays
+            projectiles = [];
+            enemyProjectiles = [];
+            powerUps = [];
+            explosions = [];
+            enemies = [];
+            capturedShip = null;
+            
+            // Create enemies in formation
+            createEnemyFormation();
+        }
+        
+        function createEnemyFormation() {
+            enemies = [];
+            
+            for (let row = 0; row < GRID_ROWS; row++) {
+                for (let col = 0; col < GRID_COLS; col++) {
+                    // Determine enemy type based on row
+                    let enemyType;
+                    if (row === 0) {
+                        enemyType = enemyTypes[2]; // Boss
+                    } else if (row >= 1 && row <= 2) {
+                        enemyType = enemyTypes[1]; // Butterfly
+                    } else {
+                        enemyType = enemyTypes[0]; // Bee
+                    }
+                    
+                    // Create enemy
+                    let enemy = {
+                        x: col * GRID_SPACING_X + 100,
+                        y: row * GRID_SPACING_Y + FORMATION_TOP,
+                        type: enemyType.type,
+                        points: enemyType.points,
+                        color: enemyType.color,
+                        health: enemyType.health * (1 + stage * 0.1), // Increase health with stage
+                        size: enemyType.size,
+                        canCapture: enemyType.canCapture || false,
+                        formationX: col * GRID_SPACING_X + 100,
+                        formationY: row * GRID_SPACING_Y + FORMATION_TOP,
+                        inFormation: true,
+                        attacking: false,
+                        attackPattern: null,
+                        attackStep: 0,
+                        fireRate: 0.002 * stage // Increase fire rate with stage
+                    };
+                    
+                    enemies.push(enemy);
+                }
+            }
+        }
+        
+        function draw() {
+            background(0);
+            
+            // Update game time
+            gameTime += deltaTime;
+            
+            // Draw starfield
+            updateStars();
+            
+            switch (gameState) {
+                case GAME_STATE.START:
+                    drawStartScreen();
+                    break;
+                case GAME_STATE.PLAYING:
+                    updateGameplay();
+                    drawGameplay();
+                    break;
+                case GAME_STATE.STAGE_TRANSITION:
+                    stageTransitionTimer -= deltaTime;
+                    drawStageTransition();
+                    if (stageTransitionTimer <= 0) {
+                        gameState = GAME_STATE.PLAYING;
+                        createEnemyFormation();
+                    }
+                    break;
+                case GAME_STATE.GAME_OVER:
+                    drawGameOver();
+                    break;
+                case GAME_STATE.PAUSED:
+                    drawPaused();
+                    break;
+            }
+        }
+        
+        function updateStars() {
+            for (let star of stars) {
+                // Move stars down
+                star.y += star.speed;
+                
+                // Reset stars that go off screen
+                if (star.y > height) {
+                    star.y = 0;
+                    star.x = random(width);
+                }
+                
+                // Draw stars
+                fill(255);
+                noStroke();
+                circle(star.x, star.y, star.size);
+            }
+        }
+        
+        function drawStartScreen() {
+            textAlign(CENTER, CENTER);
+            
+            // Title
+            fill(255, 255, 0);
+            textSize(60);
+            text("GALAGA", width / 2, height / 3);
+            
+            // Instructions
+            fill(255);
+            textSize(20);
+            text("Arrow keys to move", width / 2, height / 2);
+            text("SPACE to fire", width / 2, height / 2 + 30);
+            text("B to use bomb", width / 2, height / 2 + 60);
+            text("P to pause", width / 2, height / 2 + 90);
+            
+            // Start prompt
+            fill(255);
+            textSize(24);
+            if (Math.floor(frameCount / 30) % 2 === 0) {
+                text("PRESS ENTER TO START", width / 2, height * 3 / 4);
+            }
+            
+            // Draw player ship at bottom for visual
+            drawPlayerShip(width / 2, height - 100, false);
+        }
+        
+        function updateGameplay() {
+            // Handle player movement
+            if (keyIsDown(LEFT_ARROW)) {
+                player.x = max(player.width / 2, player.x - player.speed);
+            }
+            if (keyIsDown(RIGHT_ARROW)) {
+                player.x = min(width - player.width / 2, player.x + player.speed);
+            }
+            
+            // Update player hit animation
+            if (player.isHit) {
+                player.hitTimer -= deltaTime;
+                if (player.hitTimer <= 0) {
+                    player.isHit = false;
+                }
+            }
+            
+            // Update projectiles
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                projectiles[i].y -= projectiles[i].speed;
+                
+                // Remove off-screen projectiles
+                if (projectiles[i].y < 0) {
+                    projectiles.splice(i, 1);
+                    continue;
+                }
+                
+                // Check for collisions with enemies
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    if (checkCollision(projectiles[i], enemies[j])) {
+                        enemies[j].health--;
+                        
+                        // If enemy dies
+                        if (enemies[j].health <= 0) {
+                            // Add score
+                            score += enemies[j].points;
+                            
+                            // Create explosion
+                            createExplosion(enemies[j].x, enemies[j].y);
+                            
+                            // Chance to drop power-up
+                            if (random() < 0.1) {
+                                createPowerUp(enemies[j].x, enemies[j].y);
+                            }
+                            
+                            // Remove enemy
+                            enemies.splice(j, 1);
+                        }
+                        
+                        // Remove projectile
+                        projectiles.splice(i, 1);
+                        break;
+                    }
+                }
+            }
+            
+            // Update enemy projectiles
+            for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
+                enemyProjectiles[i].y += enemyProjectiles[i].speed;
+                
+                // Remove off-screen projectiles
+                if (enemyProjectiles[i].y > height) {
+                    enemyProjectiles.splice(i, 1);
+                    continue;
+                }
+                
+                // Check for collision with player
+                if (!player.isHit && checkCollision(enemyProjectiles[i], player)) {
+                    playerHit();
+                    enemyProjectiles.splice(i, 1);
+                }
+            }
+            
+            // Update enemies
+            updateEnemies();
+            
+            // Update power-ups
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                powerUps[i].y += 2;
+                
+                // Remove off-screen power-ups
+                if (powerUps[i].y > height) {
+                    powerUps.splice(i, 1);
+                    continue;
+                }
+                
+                // Check for collision with player
+                if (checkCollision(powerUps[i], player)) {
+                    applyPowerUp(powerUps[i].type);
+                    powerUps.splice(i, 1);
+                }
+            }
+            
+            // Update explosions
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                explosions[i].timer -= deltaTime;
+                if (explosions[i].timer <= 0) {
+                    explosions.splice(i, 1);
+                }
+            }
+            
+            // Check if stage is cleared
+            if (enemies.length === 0) {
+                stage++;
+                stageTransitionTimer = 3000;
+                gameState = GAME_STATE.STAGE_TRANSITION;
+            }
+        }
+        
+        function updateEnemies() {
+            // Determine if a new attack should start
+            if (gameTime - lastEnemyAttackTime > attackCooldown && enemies.some(e => e.inFormation)) {
+                // Find enemies in formation
+                let formationEnemies = enemies.filter(e => e.inFormation);
+                
+                if (formationEnemies.length > 0 && random() < 0.1) {
+                    // Select a random enemy to attack
+                    let attackingEnemy = random(formationEnemies);
+                    
+                    // Select a random attack pattern
+                    let patternIndex = floor(random(ATTACK_PATTERNS.length));
+                    attackingEnemy.attackPattern = ATTACK_PATTERNS[patternIndex].name;
+                    attackingEnemy.attacking = true;
+                    attackingEnemy.inFormation = false;
+                    attackingEnemy.attackStep = 0;
+                    
+                    lastEnemyAttackTime = gameTime;
+                }
+            }
+            
+            // Update each enemy
+            for (let enemy of enemies) {
+                // Enemy in formation
+                if (enemy.inFormation) {
+                    // Simple formation movement - slight sideways movement
+                    enemy.formationX += sin(frameCount * 0.02) * 0.5;
+                    enemy.x = enemy.formationX;
+                    
+                    // Random firing
+                    if (random() < enemy.fireRate) {
+                        enemyProjectiles.push({
+                            x: enemy.x,
+                            y: enemy.y + enemy.size / 2,
+                            width: 4,
+                            height: 10,
+                            speed: 5,
+                            color: '#ff0000'
+                        });
+                    }
+                }
+                // Enemy attacking
+                else if (enemy.attacking) {
+                    enemy.attackStep += 0.02;
+                    
+                    switch (enemy.attackPattern) {
+                        case 'dive':
+                            // Simple dive attack
+                            enemy.x += sin(enemy.attackStep * 3) * 5;
+                            enemy.y += 3;
+                            break;
+                        case 'swoop':
+                            // Swooping attack
+                            enemy.x = width / 2 + sin(enemy.attackStep) * (width / 2 - 50);
+                            enemy.y = FORMATION_TOP + 100 + sin(enemy.attackStep * 2) * 200;
+                            break;
+                        case 'zigzag':
+                            // Zigzag attack
+                            enemy.x += sin(enemy.attackStep * 10) * 8;
+                            enemy.y += 2;
+                            break;
+                    }
+                    
+                    // Check if enemy should return to formation
+                    if (enemy.y > height || enemy.attackStep > 10) {
+                        enemy.inFormation = true;
+                        enemy.attacking = false;
+                        enemy.x = enemy.formationX;
+                        enemy.y = enemy.formationY;
+                    }
+                    
+                    // Check for collision with player while attacking
+                    if (!player.isHit && dist(enemy.x, enemy.y, player.x, player.y) < (enemy.size + player.width) / 2) {
+                        // If boss enemy can capture ships
+                        if (enemy.type === 'boss' && enemy.canCapture && !player.dualFighter && !capturedShip) {
+                            capturePlayerShip();
+                        } else {
+                            playerHit();
+                        }
+                    }
+                    
+                    // Higher chance to fire while attacking
+                    if (random() < enemy.fireRate * 3) {
+                        enemyProjectiles.push({
+                            x: enemy.x,
+                            y: enemy.y + enemy.size / 2,
+                            width: 4,
+                            height: 10,
+                            speed: 5,
+                            color: '#ff0000'
+                        });
+                    }
+                }
+            }
+            
+            // Update captured ship
+            if (capturedShip) {
+                // Move with the captor
+                let captor = enemies.find(e => e.type === 'boss' && e.canCapture);
+                if (captor) {
+                    capturedShip.x = captor.x;
+                    capturedShip.y = captor.y + 20;
+                } else {
+                    // If captor is destroyed, release the ship
+                    createPowerUp(capturedShip.x, capturedShip.y, 'dualFighter');
+                    capturedShip = null;
+                }
+            }
+        }
+        
+        function drawGameplay() {
+            // Draw player ship
+            if (!player.isCaptured) {
+                drawPlayerShip(player.x, player.y, player.isHit);
+                
+                // Draw dual fighter if active
+                if (player.dualFighter) {
+                    drawPlayerShip(player.x - 40, player.y, player.isHit);
+                }
+            }
+            
+            // Draw projectiles
+            for (let projectile of projectiles) {
+                fill(255, 255, 0);
+                noStroke();
+                rect(projectile.x - projectile.width / 2, projectile.y, projectile.width, projectile.height);
+            }
+            
+            // Draw enemy projectiles
+            for (let projectile of enemyProjectiles) {
+                fill(255, 0, 0);
+                noStroke();
+                rect(projectile.x - projectile.width / 2, projectile.y, projectile.width, projectile.height);
+            }
+            
+            // Draw enemies
+            for (let enemy of enemies) {
+                fill(enemy.color);
+                noStroke();
+                
+                // Different shapes for different enemy types
+                if (enemy.type === 'bee') {
+                    ellipse(enemy.x, enemy.y, enemy.size, enemy.size);
+                } else if (enemy.type === 'butterfly') {
+                    rectMode(CENTER);
+                    rect(enemy.x, enemy.y, enemy.size, enemy.size);
+                    rectMode(CORNER);
+                } else if (enemy.type === 'boss') {
+                    drawBossEnemy(enemy);
+                }
+            }
+            
+            // Draw captured ship
+            if (capturedShip) {
+                drawPlayerShip(capturedShip.x, capturedShip.y, false, true);
+            }
+            
+            // Draw power-ups
+            for (let powerUp of powerUps) {
+                fill(255, 255, 255);
+                stroke(powerUp.color);
+                strokeWeight(2);
+                ellipse(powerUp.x, powerUp.y, 20, 20);
+                noStroke();
+                
+                fill(powerUp.color);
+                textSize(14);
+                textAlign(CENTER, CENTER);
+                text(powerUp.symbol, powerUp.x, powerUp.y);
+            }
+            
+            // Draw explosions
+            for (let explosion of explosions) {
+                let alpha = map(explosion.timer, 0, 500, 0, 255);
+                let size = map(explosion.timer, 0, 500, explosion.size * 2, explosion.size);
+                
+                fill(255, 200, 0, alpha);
+                ellipse(explosion.x, explosion.y, size, size);
+                
+                fill(255, 100, 0, alpha);
+                ellipse(explosion.x, explosion.y, size * 0.7, size * 0.7);
+            }
+            
+            // Draw UI
+            drawUI();
+        }
+        
+        function drawBossEnemy(enemy) {
+            // Complex shape for boss enemy
+            push();
+            translate(enemy.x, enemy.y);
+            
+            // Main body
+            fill(enemy.color);
+            rect(-enemy.size / 2, -enemy.size / 2, enemy.size, enemy.size);
+            
+            // Wings
+            triangle(-enemy.size / 2, 0, -enemy.size, -enemy.size / 3, -enemy.size, enemy.size / 3);
+            triangle(enemy.size / 2, 0, enemy.size, -enemy.size / 3, enemy.size, enemy.size / 3);
+            
+            // Eyes
+            fill(255, 0, 0);
+            circle(-enemy.size / 4, -enemy.size / 4, enemy.size / 5);
+            circle(enemy.size / 4, -enemy.size / 4, enemy.size / 5);
+            
+            pop();
+        }
+        
+        function drawPlayerShip(x, y, isHit, isCaptured = false) {
+            push();
+            translate(x, y);
+            
+            if (isHit) {
+                if (frameCount % 6 < 3) {
+                    fill(255, 0, 0);
+                } else {
+                    fill(255, 255, 255);
+                }
+            } else if (isCaptured) {
+                // Captured ship has a different color
+                fill(100, 100, 255);
+            } else {
+                fill(255, 255, 255);
+            }
+            
+            // Ship body
+            triangle(0, -15, -15, 15, 15, 15);
+            
+            // Ship cockpit
+            fill(0, 255, 255);
+            rect(-5, -5, 10, 10);
+            
+            pop();
+        }
+        
+        function drawUI() {
+            textAlign(LEFT, TOP);
+            fill(255);
+            textSize(20);
+            
+            // Score
+            text(`SCORE: ${score}`, 20, 20);
+            
+            // High score
+            text(`HIGH: ${highScore}`, width - 150, 20);
+            
+            // Stage
+            text(`STAGE: ${stage}`, width / 2 - 40, 20);
+            
+            // Lives
+            text(`LIVES:`, 20, height - 30);
+            for (let i = 0; i < lives; i++) {
+                drawPlayerShip(100 + i * 30, height - 20, false);
+            }
+            
+            // Bombs
+            text(`BOMBS:`, width - 150, height - 30);
+            for (let i = 0; i < bombs; i++) {
+                fill(255, 0, 0);
+                ellipse(width - 100 + i * 20, height - 20, 10, 10);
+            }
+        }
+        
+        function drawStageTransition() {
+            background(0);
+            updateStars();
+            
+            textAlign(CENTER, CENTER);
+            fill(255, 255, 0);
+            textSize(40);
+            text(`STAGE ${stage}`, width / 2, height / 2);
+            
+            textSize(24);
+            fill(255);
+            text(`GET READY!`, width / 2, height / 2 + 50);
+        }
+        
+        function drawGameOver() {
+            textAlign(CENTER, CENTER);
+            fill(255, 0, 0);
+            textSize(60);
+            text("GAME OVER", width / 2, height / 3);
+            
+            fill(255);
+            textSize(30);
+            text(`SCORE: ${score}`, width / 2, height / 2);
+            text(`HIGH SCORE: ${highScore}`, width / 2, height / 2 + 40);
+            
+            textSize(24);
+            if (Math.floor(frameCount / 30) % 2 === 0) {
+                text("PRESS ENTER TO RESTART", width / 2, height * 3 / 4);
+            }
+        }
+        
+        function drawPaused() {
+            textAlign(CENTER, CENTER);
+            fill(255);
+            textSize(40);
+            text("PAUSED", width / 2, height / 2);
+            
+            textSize(20);
+            text("Press P to resume", width / 2, height / 2 + 40);
+        }
+        
+        function keyPressed() {
+            // Start game
+            if (keyCode === ENTER) {
+                if (gameState === GAME_STATE.START || gameState === GAME_STATE.GAME_OVER) {
+                    resetGame();
+                    gameState = GAME_STATE.PLAYING;
+                }
+            }
+            
+            // Fire projectile
+            if (keyCode === 32 && gameState === GAME_STATE.PLAYING && !player.isHit) { // Space bar
+                fireProjectile();
+            }
+            
+            // Use bomb
+            if (key === 'b' && gameState === GAME_STATE.PLAYING && bombs > 0) {
+                useBomb();
+            }
+            
+            // Pause game
+            if (key === 'p') {
+                if (gameState === GAME_STATE.PLAYING) {
+                    gameState = GAME_STATE.PAUSED;
+                } else if (gameState === GAME_STATE.PAUSED) {
+                    gameState = GAME_STATE.PLAYING;
+                }
+            }
+        }
+        
+        function fireProjectile() {
+            // Create projectile at player position
+            projectiles.push({
+                x: player.x,
+                y: player.y - 15,
+                width: 4,
+                height: 15,
+                speed: 10,
+                color: '#ffff00'
+            });
+            
+            // If dual fighter, create a second projectile
+            if (player.dualFighter) {
+                projectiles.push({
+                    x: player.x - 40,
+                    y: player.y - 15,
+                    width: 4,
+                    height: 15,
+                    speed: 10,
+                    color: '#ffff00'
+                });
+            }
+        }
+        
+        function useBomb() {
+            bombs--;
+            
+            // Destroy all enemies on screen
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                // Create explosion
+                createExplosion(enemies[i].x, enemies[i].y);
+                
+                // Add score
+                score += enemies[i].points;
+                
+                // Chance to drop power-up
+                if (random() < 0.1) {
+                    createPowerUp(enemies[i].x, enemies[i].y);
+                }
+            }
+            
+            // Clear enemies and projectiles
+            enemies = [];
+            enemyProjectiles = [];
+            
+            // Create large explosion effect
+            for (let i = 0; i < 10; i++) {
+                createExplosion(random(width), random(height), 100);
+            }
+        }
+        
+        function playerHit() {
+            player.isHit = true;
+            player.hitTimer = 1000;
+            lives--;
+            
+            // Reset dual fighter status
+            player.dualFighter = false;
+            
+            // Create explosion
+            createExplosion(player.x, player.y);
+            
+            // Check game over
+            if (lives <= 0) {
+                gameState = GAME_STATE.GAME_OVER;
+                highScore = max(score, highScore);
+            }
+        }
+        
+        function capturePlayerShip() {
+            player.isCaptured = true;
+            
+            // Create a captured ship
+            capturedShip = {
+                x: player.x,
+                y: player.y,
+                width: player.width,
+                height: player.height
+            };
+            
+            // Lose a life but continue playing
+            lives--;
+            
+            // Check game over
+            if (lives <= 0) {
+                gameState = GAME_STATE.GAME_OVER;
+                highScore = max(score, highScore);
+            } else {
+                // Respawn player
+                player.x = width / 2;
+                player.y = height - 100;
+                player.isCaptured = false;
+            }
+        }
+        
+        function createExplosion(x, y, size = 30) {
+            explosions.push({
+                x: x,
+                y: y,
+                size: size,
+                timer: 500
+            });
+        }
+        
+        function createPowerUp(x, y, forcedType = null) {
+            let type = forcedType || random(POWER_UP_TYPES);
+            let powerUp = {
+                x: x,
+                y: y,
+                width: 20,
+                height: 20,
+                type: type
+            };
+            
+            // Set visual properties based on type
+            switch (type) {
+                case 'rapidFire':
+                    powerUp.color = '#ffff00';
+                    powerUp.symbol = 'R';
+                    break;
+                case 'shield':
+                    powerUp.color = '#00ffff';
+                    powerUp.symbol = 'S';
+                    break;
+                case 'extraLife':
+                    powerUp.color = '#00ff00';
+                    powerUp.symbol = 'L';
+                    break;
+                case 'dualFighter':
+                    powerUp.color = '#ff00ff';
+                    powerUp.symbol = 'D';
+                    break;
+            }
+            
+            powerUps.push(powerUp);
+        }
+        
+        function applyPowerUp(type) {
+            switch (type) {
+                case 'rapidFire':
+                    // Temporary effect would be implemented here
+                    score += 500;
+                    break;
+                case 'shield':
+                    // Temporary effect would be implemented here
+                    score += 500;
+                    break;
+                case 'extraLife':
+                    lives++;
+                    break;
+                case 'dualFighter':
+                    player.dualFighter = true;
+                    break;
+            }
+        }
+        
+        function checkCollision(obj1, obj2) {
+            // For enemies with size property (circular collision)
+            if (obj2.size) {
+                return dist(obj1.x, obj1.y, obj2.x, obj2.y) < (obj1.width / 2 + obj2.size / 2);
+            }
+            
+            // Rectangle collision
+            return (
+                obj1.x + obj1.width / 2 > obj2.x - obj2.width / 2 &&
+                obj1.x - obj1.width / 2 < obj2.x + obj2.width / 2 &&
+                obj1.y + obj1.height / 2 > obj2.y - obj2.height / 2 &&
+                obj1.y - obj1.height / 2 < obj2.y + obj2.height / 2
+            );
+        }
+    </script>
+</body>
+</html>
