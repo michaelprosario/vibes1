@@ -1,0 +1,2014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legend of Zelda Dungeon Explorer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #000;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        // Game Constants
+        const TILE_SIZE = 32;
+        const GRID_WIDTH = 16;
+        const GRID_HEIGHT = 11;
+        const CANVAS_WIDTH = GRID_WIDTH * TILE_SIZE;
+        const CANVAS_HEIGHT = GRID_HEIGHT * TILE_SIZE;
+        const DIRECTION = {
+            UP: 0,
+            RIGHT: 1, 
+            DOWN: 2,
+            LEFT: 3
+        };
+        const GAME_STATE = {
+            OVERWORLD: 0,
+            DUNGEON: 1,
+            ROOM_TRANSITION: 2,
+            GAME_OVER: 3,
+            VICTORY: 4,
+            PAUSED: 5
+        };
+        const ITEM_TYPE = {
+            KEY: 0,
+            HEART: 1,
+            MAP: 2,
+            COMPASS: 3,
+            BOW: 4,
+            BOMB: 5,
+            BOOMERANG: 6,
+            CANDLE: 7,
+            TRIFORCE: 8,
+            HEART_CONTAINER: 9
+        };
+        const ENEMY_TYPE = {
+            STALFOS: 0,
+            KEESE: 1,
+            AQUAMENTUS: 2
+        };
+        
+        // Main Game Controller
+        class Game {
+            constructor() {
+                this.state = GAME_STATE.OVERWORLD;
+                this.link = new Link(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+                this.overworld = new Overworld();
+                this.dungeon = new Dungeon();
+                this.camera = new Camera();
+                this.hud = new HUD();
+                this.transitionTimer = 0;
+                this.paused = false;
+            }
+            
+            update() {
+                switch(this.state) {
+                    case GAME_STATE.OVERWORLD:
+                        this.overworld.update(this.link);
+                        this.link.update();
+                        
+                        // Check for dungeon entrance
+                        if (this.overworld.checkDungeonEntrance(this.link)) {
+                            this.state = GAME_STATE.DUNGEON;
+                            this.dungeon.enter();
+                        }
+                        break;
+                        
+                    case GAME_STATE.DUNGEON:
+                        // Check for room transitions
+                        const newRoom = this.dungeon.checkDoorways(this.link);
+                        if (newRoom) {
+                            this.state = GAME_STATE.ROOM_TRANSITION;
+                            this.camera.startTransition(newRoom.direction);
+                            this.transitionTimer = 60; // 1 second at 60fps
+                            this.dungeon.prepareRoomChange(newRoom.roomId);
+                            this.link.lockControls();
+                        }
+                        
+                        this.dungeon.update(this.link);
+                        this.link.update();
+                        
+                        // Check for game win condition (Triforce collected)
+                        if (this.link.hasTriforce) {
+                            this.state = GAME_STATE.VICTORY;
+                        }
+                        
+                        // Check for game over
+                        if (this.link.health <= 0) {
+                            this.state = GAME_STATE.GAME_OVER;
+                        }
+                        break;
+                        
+                    case GAME_STATE.ROOM_TRANSITION:
+                        this.transitionTimer--;
+                        this.camera.updateTransition();
+                        
+                        if (this.transitionTimer <= 0) {
+                            this.state = GAME_STATE.DUNGEON;
+                            this.dungeon.completeRoomChange();
+                            this.link.unlockControls();
+                            this.camera.completeTransition();
+                        }
+                        break;
+                        
+                    case GAME_STATE.GAME_OVER:
+                        // Handle game over state
+                        break;
+                        
+                    case GAME_STATE.VICTORY:
+                        // Handle victory state
+                        break;
+                        
+                    case GAME_STATE.PAUSED:
+                        // Handle paused state - map viewing, etc.
+                        break;
+                }
+            }
+            
+            draw() {
+                background(0);
+                
+                push();
+                // Apply camera transformations
+                this.camera.apply();
+                
+                switch(this.state) {
+                    case GAME_STATE.OVERWORLD:
+                        this.overworld.draw();
+                        this.link.draw();
+                        break;
+                        
+                    case GAME_STATE.DUNGEON:
+                    case GAME_STATE.ROOM_TRANSITION:
+                        this.dungeon.draw();
+                        this.link.draw();
+                        break;
+                        
+                    case GAME_STATE.GAME_OVER:
+                        fill(0);
+                        rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                        fill(255);
+                        textSize(32);
+                        textAlign(CENTER, CENTER);
+                        text("GAME OVER", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+                        break;
+                        
+                    case GAME_STATE.VICTORY:
+                        fill(0);
+                        rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                        fill(255, 215, 0); // Gold color
+                        textSize(32);
+                        textAlign(CENTER, CENTER);
+                        text("TRIFORCE FRAGMENT OBTAINED!", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+                        break;
+                        
+                    case GAME_STATE.PAUSED:
+                        this.dungeon.draw();
+                        // Draw map overlay if player has map
+                        if (this.link.hasMap) {
+                            this.dungeon.drawMap(this.link.hasCompass);
+                        }
+                        break;
+                }
+                pop();
+                
+                // HUD is drawn outside camera transformations
+                this.hud.draw(this.link);
+            }
+            
+            togglePause() {
+                if (this.state === GAME_STATE.DUNGEON) {
+                    this.state = GAME_STATE.PAUSED;
+                } else if (this.state === GAME_STATE.PAUSED) {
+                    this.state = GAME_STATE.DUNGEON;
+                }
+            }
+            
+            handleKeyPress(key) {
+                if (key === 'p' || key === 'P') {
+                    this.togglePause();
+                }
+                
+                if (this.state === GAME_STATE.DUNGEON) {
+                    // Item usage through number keys 1-8
+                    if (key >= '1' && key <= '8') {
+                        const itemIndex = parseInt(key) - 1;
+                        this.link.useItem(itemIndex);
+                    }
+                    
+                    // B button (attack)
+                    if (key === 'z' || key === 'Z') {
+                        this.link.attack();
+                    }
+                    
+                    // A button (special item)
+                    if (key === 'x' || key === 'X') {
+                        this.link.useSelectedItem();
+                    }
+                }
+            }
+        }
+        
+        // Player Character
+        class Link {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = TILE_SIZE;
+                this.height = TILE_SIZE;
+                this.speed = 2;
+                this.direction = DIRECTION.DOWN;
+                this.isMoving = false;
+                this.isAttacking = false;
+                this.attackTimer = 0;
+                this.attackDuration = 20;
+                this.health = 6; // 3 hearts (each heart is 2 units)
+                this.maxHealth = 6;
+                this.rupees = 0;
+                this.keys = 0;
+                this.inventory = {
+                    hasMap: false,
+                    hasCompass: false,
+                    bow: false,
+                    bombs: 0,
+                    boomerang: false,
+                    candle: false
+                };
+                this.selectedItem = -1; // -1 means no item selected
+                this.controlsLocked = false;
+                this.hasTriforce = false;
+                this.invulnerableTimer = 0;
+            }
+            
+            get hasMap() {
+                return this.inventory.hasMap;
+            }
+            
+            get hasCompass() {
+                return this.inventory.hasCompass;
+            }
+            
+            update() {
+                if (this.controlsLocked) return;
+                
+                // Handle movement
+                let dx = 0;
+                let dy = 0;
+                
+                if (keyIsDown(UP_ARROW) || keyIsDown(87)) { // W key
+                    dy = -this.speed;
+                    this.direction = DIRECTION.UP;
+                    this.isMoving = true;
+                } else if (keyIsDown(DOWN_ARROW) || keyIsDown(83)) { // S key
+                    dy = this.speed;
+                    this.direction = DIRECTION.DOWN;
+                    this.isMoving = true;
+                } else if (keyIsDown(LEFT_ARROW) || keyIsDown(65)) { // A key
+                    dx = -this.speed;
+                    this.direction = DIRECTION.LEFT;
+                    this.isMoving = true;
+                } else if (keyIsDown(RIGHT_ARROW) || keyIsDown(68)) { // D key
+                    dx = this.speed;
+                    this.direction = DIRECTION.RIGHT;
+                    this.isMoving = true;
+                } else {
+                    this.isMoving = false;
+                }
+                
+                // Update position
+                this.x += dx;
+                this.y += dy;
+                
+                // Keep Link within canvas bounds
+                this.x = constrain(this.x, this.width/2, CANVAS_WIDTH - this.width/2);
+                this.y = constrain(this.y, this.height/2, CANVAS_HEIGHT - this.height/2);
+                
+                // Update attack state
+                if (this.isAttacking) {
+                    this.attackTimer--;
+                    if (this.attackTimer <= 0) {
+                        this.isAttacking = false;
+                    }
+                }
+                
+                // Update invulnerability timer
+                if (this.invulnerableTimer > 0) {
+                    this.invulnerableTimer--;
+                }
+            }
+            
+            draw() {
+                // Draw link with blinking effect when invulnerable
+                if (this.invulnerableTimer > 0 && frameCount % 6 < 3) {
+                    return; // Skip drawing to create blinking effect
+                }
+                
+                // Draw Link based on direction
+                fill(34, 177, 76); // Green color for Link
+                rectMode(CENTER);
+                
+                // Basic Link drawing
+                rect(this.x, this.y, this.width, this.height);
+                
+                // Draw sword if attacking
+                if (this.isAttacking) {
+                    fill(200, 200, 200); // Silver color for sword
+                    let swordX = this.x;
+                    let swordY = this.y;
+                    let swordWidth = 5;
+                    let swordLength = 20;
+                    
+                    switch(this.direction) {
+                        case DIRECTION.UP:
+                            swordY = this.y - this.height/2 - swordLength/2;
+                            rect(swordX, swordY, swordWidth, swordLength);
+                            break;
+                        case DIRECTION.RIGHT:
+                            swordX = this.x + this.width/2 + swordLength/2;
+                            rect(swordX, swordY, swordLength, swordWidth);
+                            break;
+                        case DIRECTION.DOWN:
+                            swordY = this.y + this.height/2 + swordLength/2;
+                            rect(swordX, swordY, swordWidth, swordLength);
+                            break;
+                        case DIRECTION.LEFT:
+                            swordX = this.x - this.width/2 - swordLength/2;
+                            rect(swordX, swordY, swordLength, swordWidth);
+                            break;
+                    }
+                }
+                
+                // Indicate direction with a "face" marker
+                fill(0);
+                let eyeX = this.x;
+                let eyeY = this.y;
+                let eyeOffset = 8;
+                
+                switch(this.direction) {
+                    case DIRECTION.UP:
+                        eyeY -= eyeOffset;
+                        break;
+                    case DIRECTION.RIGHT:
+                        eyeX += eyeOffset;
+                        break;
+                    case DIRECTION.DOWN:
+                        eyeY += eyeOffset;
+                        break;
+                    case DIRECTION.LEFT:
+                        eyeX -= eyeOffset;
+                        break;
+                }
+                
+                ellipse(eyeX, eyeY, 5, 5);
+            }
+            
+            attack() {
+                if (!this.isAttacking && !this.controlsLocked) {
+                    this.isAttacking = true;
+                    this.attackTimer = this.attackDuration;
+                }
+            }
+            
+            useItem(index) {
+                // Set the selected item
+                this.selectedItem = index;
+            }
+            
+            useSelectedItem() {
+                if (this.selectedItem === -1 || this.controlsLocked) return;
+                
+                switch(this.selectedItem) {
+                    case 0: // Bow
+                        if (this.inventory.bow && this.rupees > 0) {
+                            // Create arrow projectile
+                            game.dungeon.addProjectile(new PlayerProjectile(
+                                this.x, this.y, this.direction, 'arrow'
+                            ));
+                            this.rupees--;
+                        }
+                        break;
+                    case 1: // Bombs
+                        if (this.inventory.bombs > 0) {
+                            // Place bomb
+                            game.dungeon.addBomb(new Bomb(this.x, this.y));
+                            this.inventory.bombs--;
+                        }
+                        break;
+                    case 2: // Boomerang
+                        if (this.inventory.boomerang) {
+                            // Throw boomerang
+                            game.dungeon.addProjectile(new PlayerProjectile(
+                                this.x, this.y, this.direction, 'boomerang'
+                            ));
+                        }
+                        break;
+                    case 3: // Candle
+                        if (this.inventory.candle) {
+                            // Light up the room
+                            game.dungeon.lightRoom();
+                        }
+                        break;
+                }
+            }
+            
+            takeDamage(amount = 1) {
+                if (this.invulnerableTimer > 0) return;
+                
+                this.health -= amount;
+                if (this.health < 0) this.health = 0;
+                
+                // Make Link invulnerable for a short time
+                this.invulnerableTimer = 60;
+            }
+            
+            collectItem(item) {
+                switch(item.type) {
+                    case ITEM_TYPE.KEY:
+                        this.keys++;
+                        return true;
+                    case ITEM_TYPE.HEART:
+                        if (this.health < this.maxHealth) {
+                            this.health++;
+                            return true;
+                        }
+                        return false;
+                    case ITEM_TYPE.HEART_CONTAINER:
+                        this.maxHealth += 2;
+                        this.health = this.maxHealth;
+                        return true;
+                    case ITEM_TYPE.MAP:
+                        this.inventory.hasMap = true;
+                        return true;
+                    case ITEM_TYPE.COMPASS:
+                        this.inventory.hasCompass = true;
+                        return true;
+                    case ITEM_TYPE.BOW:
+                        this.inventory.bow = true;
+                        return true;
+                    case ITEM_TYPE.BOMB:
+                        this.inventory.bombs += 3;
+                        return true;
+                    case ITEM_TYPE.BOOMERANG:
+                        this.inventory.boomerang = true;
+                        return true;
+                    case ITEM_TYPE.CANDLE:
+                        this.inventory.candle = true;
+                        return true;
+                    case ITEM_TYPE.TRIFORCE:
+                        this.hasTriforce = true;
+                        return true;
+                }
+                return false;
+            }
+            
+            useKey() {
+                if (this.keys > 0) {
+                    this.keys--;
+                    return true;
+                }
+                return false;
+            }
+            
+            lockControls() {
+                this.controlsLocked = true;
+            }
+            
+            unlockControls() {
+                this.controlsLocked = false;
+            }
+            
+            getAttackBox() {
+                if (!this.isAttacking) return null;
+                
+                let attackBox = {
+                    x: this.x,
+                    y: this.y,
+                    width: 0,
+                    height: 0
+                };
+                
+                const attackRange = 20;
+                
+                switch(this.direction) {
+                    case DIRECTION.UP:
+                        attackBox.y = this.y - this.height/2 - attackRange/2;
+                        attackBox.x = this.x;
+                        attackBox.width = this.width;
+                        attackBox.height = attackRange;
+                        break;
+                    case DIRECTION.RIGHT:
+                        attackBox.x = this.x + this.width/2 + attackRange/2;
+                        attackBox.y = this.y;
+                        attackBox.width = attackRange;
+                        attackBox.height = this.height;
+                        break;
+                    case DIRECTION.DOWN:
+                        attackBox.y = this.y + this.height/2 + attackRange/2;
+                        attackBox.x = this.x;
+                        attackBox.width = this.width;
+                        attackBox.height = attackRange;
+                        break;
+                    case DIRECTION.LEFT:
+                        attackBox.x = this.x - this.width/2 - attackRange/2;
+                        attackBox.y = this.y;
+                        attackBox.width = attackRange;
+                        attackBox.height = this.height;
+                        break;
+                }
+                
+                return attackBox;
+            }
+        }
+        
+        // Camera System
+        class Camera {
+            constructor() {
+                this.x = 0;
+                this.y = 0;
+                this.targetX = 0;
+                this.targetY = 0;
+                this.transitionDirection = null;
+                this.transitionProgress = 0;
+            }
+            
+            apply() {
+                translate(-this.x, -this.y);
+            }
+            
+            startTransition(direction) {
+                this.transitionDirection = direction;
+                this.transitionProgress = 0;
+                
+                // Set initial camera position
+                this.x = 0;
+                this.y = 0;
+                
+                // Set target based on direction
+                switch(direction) {
+                    case DIRECTION.UP:
+                        this.targetY = -CANVAS_HEIGHT;
+                        break;
+                    case DIRECTION.RIGHT:
+                        this.targetX = CANVAS_WIDTH;
+                        break;
+                    case DIRECTION.DOWN:
+                        this.targetY = CANVAS_HEIGHT;
+                        break;
+                    case DIRECTION.LEFT:
+                        this.targetX = -CANVAS_WIDTH;
+                        break;
+                }
+            }
+            
+            updateTransition() {
+                const transitionSpeed = 0.05;
+                this.transitionProgress += transitionSpeed;
+                
+                // Smooth transition using easing
+                const progress = min(this.transitionProgress, 1);
+                
+                this.x = lerp(0, this.targetX, progress);
+                this.y = lerp(0, this.targetY, progress);
+            }
+            
+            completeTransition() {
+                this.x = 0;
+                this.y = 0;
+                this.targetX = 0;
+                this.targetY = 0;
+                this.transitionDirection = null;
+                this.transitionProgress = 0;
+            }
+        }
+        
+        // HUD (Heads-Up Display)
+        class HUD {
+            constructor() {
+                this.padding = 10;
+            }
+            
+            draw(link) {
+                // Draw health
+                fill(255);
+                textSize(16);
+                textAlign(LEFT, TOP);
+                text("HEALTH:", this.padding, this.padding);
+                
+                // Draw heart containers
+                for (let i = 0; i < link.maxHealth / 2; i++) {
+                    if (link.health >= (i+1)*2) {
+                        // Full heart
+                        fill(255, 0, 0);
+                    } else if (link.health >= i*2+1) {
+                        // Half heart
+                        fill(255, 128, 128);
+                    } else {
+                        // Empty heart
+                        fill(100, 0, 0);
+                    }
+                    
+                    ellipse(100 + i*25, this.padding + 8, 16, 16);
+                }
+                
+                // Draw keys
+                fill(255, 215, 0); // Gold
+                text("KEYS: " + link.keys, this.padding, this.padding + 30);
+                
+                // Draw rupees
+                fill(0, 255, 255); // Cyan
+                text("RUPEES: " + link.rupees, this.padding, this.padding + 50);
+                
+                // Draw inventory items on the right side
+                textAlign(RIGHT, TOP);
+                
+                if (link.hasMap) {
+                    fill(255);
+                    text("MAP", CANVAS_WIDTH - this.padding, this.padding);
+                }
+                
+                if (link.hasCompass) {
+                    fill(255, 165, 0); // Orange
+                    text("COMPASS", CANVAS_WIDTH - this.padding, this.padding + 20);
+                }
+                
+                // Draw selected item indicator
+                if (link.selectedItem !== -1) {
+                    let itemName = "";
+                    switch(link.selectedItem) {
+                        case 0: itemName = link.inventory.bow ? "BOW" : ""; break;
+                        case 1: itemName = link.inventory.bombs > 0 ? "BOMBS: " + link.inventory.bombs : ""; break;
+                        case 2: itemName = link.inventory.boomerang ? "BOOMERANG" : ""; break;
+                        case 3: itemName = link.inventory.candle ? "CANDLE" : ""; break;
+                    }
+                    
+                    if (itemName) {
+                        fill(255);
+                        text("SELECTED: " + itemName, CANVAS_WIDTH - this.padding, CANVAS_HEIGHT - 30);
+                    }
+                }
+            }
+        }
+        
+        // Overworld Map System
+        class Overworld {
+            constructor() {
+                this.dungeonEntranceX = CANVAS_WIDTH / 2;
+                this.dungeonEntranceY = CANVAS_HEIGHT / 2;
+                this.completedDungeons = [];
+            }
+            
+            update(link) {
+                // Check collisions, etc.
+            }
+            
+            draw() {
+                // Draw overworld tiles
+                for (let y = 0; y < GRID_HEIGHT; y++) {
+                    for (let x = 0; x < GRID_WIDTH; x++) {
+                        fill(0, 100, 0); // Dark green for grass
+                        rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    }
+                }
+                
+                // Draw dungeon entrance
+                fill(100, 100, 100); // Gray for dungeon entrance
+                rectMode(CENTER);
+                rect(this.dungeonEntranceX, this.dungeonEntranceY, TILE_SIZE, TILE_SIZE);
+                fill(0);
+                ellipse(this.dungeonEntranceX, this.dungeonEntranceY, TILE_SIZE/2, TILE_SIZE/2);
+            }
+            
+            checkDungeonEntrance(link) {
+                const distanceToEntrance = dist(link.x, link.y, this.dungeonEntranceX, this.dungeonEntranceY);
+                return distanceToEntrance < TILE_SIZE / 2;
+            }
+            
+            markDungeonCompleted(dungeonId) {
+                if (!this.completedDungeons.includes(dungeonId)) {
+                    this.completedDungeons.push(dungeonId);
+                }
+            }
+        }
+        
+        // Dungeon System
+        class Dungeon {
+            constructor() {
+                this.rooms = [];
+                this.currentRoomId = 0;
+                this.nextRoomId = 0;
+                this.enemies = [];
+                this.items = [];
+                this.projectiles = [];
+                this.bombs = [];
+                this.blocks = [];
+                this.doors = [];
+                this.initialized = false;
+                this.darkRoom = false;
+                this.lightTimer = 0;
+                this.lightDuration = 300; // 5 seconds at 60fps
+            }
+            
+            initialize() {
+                // Create rooms layout
+                this.createRooms();
+                this.initialized = true;
+            }
+            
+            createRooms() {
+                // Room 0: Starting room
+                this.rooms.push({
+                    id: 0,
+                    enemies: [
+                        { type: ENEMY_TYPE.STALFOS, x: 250, y: 150 },
+                        { type: ENEMY_TYPE.STALFOS, x: 350, y: 200 }
+                    ],
+                    items: [],
+                    doors: [
+                        { x: CANVAS_WIDTH/2, y: 0, direction: DIRECTION.UP, targetRoom: 1 },
+                        { x: CANVAS_WIDTH, y: CANVAS_HEIGHT/2, direction: DIRECTION.RIGHT, targetRoom: 2, isLocked: true }
+                    ],
+                    isDark: false,
+                    blocks: [
+                        { x: 200, y: 200, isMovable: true, isSecret: false }
+                    ]
+                });
+                
+                // Room 1: Map room
+                this.rooms.push({
+                    id: 1,
+                    enemies: [
+                        { type: ENEMY_TYPE.KEESE, x: 150, y: 150 },
+                        { type: ENEMY_TYPE.KEESE, x: 450, y: 150 }
+                    ],
+                    items: [
+                        { type: ITEM_TYPE.MAP, x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/2 }
+                    ],
+                    doors: [
+                        { x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT, direction: DIRECTION.DOWN, targetRoom: 0 },
+                        { x: 0, y: CANVAS_HEIGHT/2, direction: DIRECTION.LEFT, targetRoom: 3 }
+                    ],
+                    isDark: false,
+                    blocks: []
+                });
+                
+                // Room 2: Key Room
+                this.rooms.push({
+                    id: 2,
+                    enemies: [
+                        { type: ENEMY_TYPE.STALFOS, x: 150, y: 150 },
+                        { type: ENEMY_TYPE.STALFOS, x: 250, y: 250 },
+                        { type: ENEMY_TYPE.STALFOS, x: 350, y: 150 }
+                    ],
+                    items: [
+                        { type: ITEM_TYPE.KEY, x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/2 }
+                    ],
+                    doors: [
+                        { x: 0, y: CANVAS_HEIGHT/2, direction: DIRECTION.LEFT, targetRoom: 0 }
+                    ],
+                    isDark: false,
+                    blocks: []
+                });
+                
+                // Room 3: Compass Room
+                this.rooms.push({
+                    id: 3,
+                    enemies: [
+                        { type: ENEMY_TYPE.KEESE, x: 200, y: 100 },
+                        { type: ENEMY_TYPE.KEESE, x: 300, y: 100 },
+                        { type: ENEMY_TYPE.KEESE, x: 400, y: 100 }
+                    ],
+                    items: [
+                        { type: ITEM_TYPE.COMPASS, x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/2 }
+                    ],
+                    doors: [
+                        { x: CANVAS_WIDTH, y: CANVAS_HEIGHT/2, direction: DIRECTION.RIGHT, targetRoom: 1 },
+                        { x: CANVAS_WIDTH/2, y: 0, direction: DIRECTION.UP, targetRoom: 4, isLocked: true }
+                    ],
+                    isDark: true,
+                    blocks: []
+                });
+                
+                // Room 4: Bow Room
+                this.rooms.push({
+                    id: 4,
+                    enemies: [
+                        { type: ENEMY_TYPE.STALFOS, x: 100, y: 100 },
+                        { type: ENEMY_TYPE.STALFOS, x: 500, y: 100 },
+                        { type: ENEMY_TYPE.STALFOS, x: 300, y: 200 }
+                    ],
+                    items: [
+                        { type: ITEM_TYPE.BOW, x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/2 }
+                    ],
+                    doors: [
+                        { x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT, direction: DIRECTION.DOWN, targetRoom: 3 },
+                        { x: CANVAS_WIDTH, y: CANVAS_HEIGHT/2, direction: DIRECTION.RIGHT, targetRoom: 5 }
+                    ],
+                    isDark: false,
+                    blocks: []
+                });
+                
+                // Room 5: Boomerang Room
+                this.rooms.push({
+                    id: 5,
+                    enemies: [
+                        { type: ENEMY_TYPE.KEESE, x: 100, y: 100 },
+                        { type: ENEMY_TYPE.KEESE, x: 500, y: 100 },
+                        { type: ENEMY_TYPE.KEESE, x: 300, y: 200 }
+                    ],
+                    items: [
+                        { type: ITEM_TYPE.BOOMERANG, x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/2 }
+                    ],
+                    doors: [
+                        { x: 0, y: CANVAS_HEIGHT/2, direction: DIRECTION.LEFT, targetRoom: 4 },
+                        { x: CANVAS_WIDTH/2, y: 0, direction: DIRECTION.UP, targetRoom: 6, isLocked: true }
+                    ],
+                    isDark: false,
+                    blocks: []
+                });
+                
+                // Room 6: Bomb and Candle Room
+                this.rooms.push({
+                    id: 6,
+                    enemies: [
+                        { type: ENEMY_TYPE.STALFOS, x: 150, y: 150 },
+                        { type: ENEMY_TYPE.STALFOS, x: 450, y: 150 }
+                    ],
+                    items: [
+                        { type: ITEM_TYPE.BOMB, x: CANVAS_WIDTH/4, y: CANVAS_HEIGHT/2 },
+                        { type: ITEM_TYPE.CANDLE, x: CANVAS_WIDTH*3/4, y: CANVAS_HEIGHT/2 }
+                    ],
+                    doors: [
+                        { x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT, direction: DIRECTION.DOWN, targetRoom: 5 },
+                        { x: CANVAS_WIDTH/2, y: 0, direction: DIRECTION.UP, targetRoom: 7 }
+                    ],
+                    isDark: true,
+                    blocks: [
+                        { x: 200, y: 300, isMovable: true, isSecret: true, revealedRoomId: 8 }
+                    ]
+                });
+                
+                // Room 7: Boss Room
+                this.rooms.push({
+                    id: 7,
+                    enemies: [
+                        { type: ENEMY_TYPE.AQUAMENTUS, x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/4, isBoss: true }
+                    ],
+                    items: [
+                        { type: ITEM_TYPE.HEART_CONTAINER, x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/2, isVisible: false }
+                    ],
+                    doors: [
+                        { x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT, direction: DIRECTION.DOWN, targetRoom: 6 },
+                        { x: CANVAS_WIDTH/2, y: 0, direction: DIRECTION.UP, targetRoom: 9, isBossLocked: true }
+                    ],
+                    isDark: false,
+                    blocks: []
+                });
+                
+                // Room 8: Secret Room
+                this.rooms.push({
+                    id: 8,
+                    enemies: [],
+                    items: [
+                        { type: ITEM_TYPE.KEY, x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/3 },
+                        { type: ITEM_TYPE.HEART, x: CANVAS_WIDTH/3, y: CANVAS_HEIGHT/2 },
+                        { type: ITEM_TYPE.HEART, x: CANVAS_WIDTH*2/3, y: CANVAS_HEIGHT/2 }
+                    ],
+                    doors: [
+                        { x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT, direction: DIRECTION.DOWN, targetRoom: 6 }
+                    ],
+                    isDark: false,
+                    blocks: []
+                });
+                
+                // Room 9: Triforce Room
+                this.rooms.push({
+                    id: 9,
+                    enemies: [],
+                    items: [
+                        { type: ITEM_TYPE.TRIFORCE, x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/2 }
+                    ],
+                    doors: [
+                        { x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT, direction: DIRECTION.DOWN, targetRoom: 7 }
+                    ],
+                    isDark: false,
+                    blocks: []
+                });
+            }
+            
+            enter() {
+                if (!this.initialized) {
+                    this.initialize();
+                }
+                
+                this.currentRoomId = 0;
+                this.loadRoom(this.currentRoomId);
+            }
+            
+            loadRoom(roomId) {
+                const room = this.rooms[roomId];
+                
+                // Load enemies
+                this.enemies = [];
+                room.enemies.forEach(enemyInfo => {
+                    let enemy;
+                    switch(enemyInfo.type) {
+                        case ENEMY_TYPE.STALFOS:
+                            enemy = new Stalfos(enemyInfo.x, enemyInfo.y);
+                            break;
+                        case ENEMY_TYPE.KEESE:
+                            enemy = new Keese(enemyInfo.x, enemyInfo.y);
+                            break;
+                        case ENEMY_TYPE.AQUAMENTUS:
+                            enemy = new Aquamentus(enemyInfo.x, enemyInfo.y);
+                            break;
+                    }
+                    
+                    if (enemyInfo.isBoss) {
+                        enemy.isBoss = true;
+                    }
+                    
+                    this.enemies.push(enemy);
+                });
+                
+                // Load items
+                this.items = [];
+                room.items.forEach(itemInfo => {
+                    if (!itemInfo.isVisible === false) {
+                        const item = new Item(itemInfo.x, itemInfo.y, itemInfo.type);
+                        this.items.push(item);
+                    }
+                });
+                
+                // Load doors
+                this.doors = [];
+                room.doors.forEach(doorInfo => {
+                    const door = new Door(doorInfo.x, doorInfo.y, doorInfo.direction, doorInfo.targetRoom);
+                    if (doorInfo.isLocked) {
+                        door.isLocked = true;
+                    }
+                    if (doorInfo.isBossLocked) {
+                        door.isBossLocked = true;
+                    }
+                    this.doors.push(door);
+                });
+                
+                // Load blocks
+                this.blocks = [];
+                room.blocks.forEach(blockInfo => {
+                    const block = new Block(blockInfo.x, blockInfo.y);
+                    block.isMovable = blockInfo.isMovable;
+                    block.isSecret = blockInfo.isSecret;
+                    if (blockInfo.revealedRoomId !== undefined) {
+                        block.revealedRoomId = blockInfo.revealedRoomId;
+                    }
+                    this.blocks.push(block);
+                });
+                
+                // Check if room is dark
+                this.darkRoom = room.isDark;
+                this.lightTimer = 0;
+                
+                // Clear projectiles and bombs
+                this.projectiles = [];
+                this.bombs = [];
+            }
+            
+            prepareRoomChange(roomId) {
+                this.nextRoomId = roomId;
+            }
+            
+            completeRoomChange() {
+                this.currentRoomId = this.nextRoomId;
+                this.loadRoom(this.currentRoomId);
+            }
+            
+            update(link) {
+                // Update enemies
+                for (let i = this.enemies.length - 1; i >= 0; i--) {
+                    const enemy = this.enemies[i];
+                    enemy.update(link);
+                    
+                    // Check if enemy is hit by Link's sword
+                    const attackBox = link.getAttackBox();
+                    if (attackBox && this.checkCollision(enemy, attackBox)) {
+                        enemy.takeDamage(1);
+                    }
+                    
+                    // Check if enemy collides with Link
+                    if (this.checkCollision(enemy, link)) {
+                        link.takeDamage(1);
+                    }
+                    
+                    // Remove dead enemies
+                    if (enemy.health <= 0) {
+                        // Check if this enemy drops a key
+                        if (enemy.dropsKey) {
+                            this.items.push(new Item(enemy.x, enemy.y, ITEM_TYPE.KEY));
+                        } else if (Math.random() < 0.3) { // 30% chance to drop a heart
+                            this.items.push(new Item(enemy.x, enemy.y, ITEM_TYPE.HEART));
+                        }
+                        
+                        // If it's the boss, reveal the heart container
+                        if (enemy.isBoss) {
+                            const room = this.rooms[this.currentRoomId];
+                            room.items.forEach(itemInfo => {
+                                if (itemInfo.type === ITEM_TYPE.HEART_CONTAINER) {
+                                    this.items.push(new Item(itemInfo.x, itemInfo.y, itemInfo.type));
+                                    
+                                    // Unlock boss door
+                                    this.doors.forEach(door => {
+                                        if (door.isBossLocked) {
+                                            door.isBossLocked = false;
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                        
+                        this.enemies.splice(i, 1);
+                    }
+                }
+                
+                // Update projectiles
+                for (let i = this.projectiles.length - 1; i >= 0; i--) {
+                    const projectile = this.projectiles[i];
+                    projectile.update();
+                    
+                    // Check if projectile is out of bounds
+                    if (projectile.isOutOfBounds()) {
+                        this.projectiles.splice(i, 1);
+                        continue;
+                    }
+                    
+                    // Check if enemy projectile hits Link
+                    if (!projectile.isPlayerProjectile && this.checkCollision(projectile, link)) {
+                        // Check if Link is blocking with shield
+                        const isBlocking = projectile.direction === (link.direction + 2) % 4;
+                        
+                        if (!isBlocking) {
+                            link.takeDamage(1);
+                        }
+                        
+                        this.projectiles.splice(i, 1);
+                        continue;
+                    }
+                    
+                    // Check if player projectile hits enemy
+                    if (projectile.isPlayerProjectile) {
+                        let enemyHit = false;
+                        for (let j = 0; j < this.enemies.length; j++) {
+                            if (this.checkCollision(projectile, this.enemies[j])) {
+                                this.enemies[j].takeDamage(1);
+                                enemyHit = true;
+                                break;
+                            }
+                        }
+                        
+                        if (enemyHit) {
+                            // If it's not a boomerang, remove it
+                            if (projectile.type !== 'boomerang') {
+                                this.projectiles.splice(i, 1);
+                            }
+                        }
+                    }
+                }
+                
+                // Update bombs
+                for (let i = this.bombs.length - 1; i >= 0; i--) {
+                    const bomb = this.bombs[i];
+                    bomb.update();
+                    
+                    // Handle bomb explosion
+                    if (bomb.exploded && !bomb.processed) {
+                        bomb.processed = true;
+                        
+                        // Check for cracked walls to destroy
+                        // In a real game, we would have wall objects to check
+                        
+                        // Check for enemies in blast radius
+                        for (let j = 0; j < this.enemies.length; j++) {
+                            const enemy = this.enemies[j];
+                            const distance = dist(bomb.x, bomb.y, enemy.x, enemy.y);
+                            
+                            if (distance < bomb.blastRadius) {
+                                enemy.takeDamage(2);
+                            }
+                        }
+                        
+                        // Check if Link is in blast radius
+                        const distanceToLink = dist(bomb.x, bomb.y, link.x, link.y);
+                        if (distanceToLink < bomb.blastRadius) {
+                            link.takeDamage(2);
+                        }
+                    }
+                    
+                    // Remove exploded bombs after their animation is done
+                    if (bomb.shouldRemove()) {
+                        this.bombs.splice(i, 1);
+                    }
+                }
+                
+                // Check for item collection
+                for (let i = this.items.length - 1; i >= 0; i--) {
+                    const item = this.items[i];
+                    
+                    // Check if Link collects the item
+                    if (this.checkCollision(link, item)) {
+                        if (link.collectItem(item)) {
+                            this.items.splice(i, 1);
+                        }
+                    }
+                }
+                
+                // Update blocks
+                this.blocks.forEach(block => {
+                    block.update(link);
+                    
+                    // Check if a secret room is revealed
+                    if (block.isSecret && block.revealed) {
+                        // In a real game, we would handle the transition to the secret room
+                        block.revealed = false; // Reset so it doesn't keep triggering
+                        
+                        if (block.revealedRoomId !== undefined) {
+                            // This would trigger a room change in a more sophisticated implementation
+                        }
+                    }
+                });
+                
+                // Update light timer for dark rooms
+                if (this.lightTimer > 0) {
+                    this.lightTimer--;
+                }
+            }
+            
+            lightRoom() {
+                this.lightTimer = this.lightDuration;
+            }
+            
+            draw() {
+                // Draw room
+                rectMode(CORNER);
+                
+                // If dark room and no light, draw dark background
+                if (this.darkRoom && this.lightTimer <= 0) {
+                    fill(10, 10, 40); // Very dark blue
+                } else {
+                    fill(50, 50, 100); // Dungeon floor color
+                }
+                
+                rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                
+                // Draw walls
+                stroke(100, 100, 150);
+                strokeWeight(2);
+                noFill();
+                rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                
+                // Draw light radius if in dark room and light is active
+                if (this.darkRoom && this.lightTimer > 0) {
+                    // Draw light effect
+                    const numCircles = 5;
+                    const maxRadius = 150;
+                    for (let i = numCircles; i > 0; i--) {
+                        const alpha = 255 * (i / numCircles) * (this.lightTimer / this.lightDuration);
+                        fill(255, 255, 200, alpha);
+                        noStroke();
+                        const radius = maxRadius * (i / numCircles);
+                        ellipse(game.link.x, game.link.y, radius * 2, radius * 2);
+                    }
+                }
+                
+                // Draw blocks
+                this.blocks.forEach(block => block.draw());
+                
+                // Draw items
+                this.items.forEach(item => item.draw());
+                
+                // Draw doors
+                this.doors.forEach(door => door.draw());
+                
+                // Draw enemies
+                this.enemies.forEach(enemy => enemy.draw());
+                
+                // Draw projectiles
+                this.projectiles.forEach(projectile => projectile.draw());
+                
+                // Draw bombs
+                this.bombs.forEach(bomb => bomb.draw());
+            }
+            
+            drawMap(hasCompass) {
+                // Draw map overlay
+                fill(0, 0, 0, 200);
+                rectMode(CORNER);
+                rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                
+                // Draw room layout
+                const roomSize = 40;
+                const startX = CANVAS_WIDTH / 2 - roomSize * 1.5;
+                const startY = CANVAS_HEIGHT / 2 - roomSize * 2;
+                
+                // Simple map layout (in reality would be based on actual room connections)
+                const mapLayout = [
+                    [0, 0, 1, 0],
+                    [0, 0, 3, 0],
+                    [2, 0, 4, 5],
+                    [0, 0, 6, 0],
+                    [0, 0, 7, 0],
+                    [0, 0, 9, 0]
+                ];
+                
+                // Draw rooms
+                for (let y = 0; y < mapLayout.length; y++) {
+                    for (let x = 0; x < mapLayout[y].length; x++) {
+                        const roomId = mapLayout[y][x];
+                        if (roomId > 0) {
+                            // Room color depends on if it's been visited
+                            if (roomId === this.currentRoomId) {
+                                fill(255, 0, 0); // Current room is red
+                            } else {
+                                fill(255); // Other rooms are white
+                            }
+                            
+                            rect(startX + x * roomSize, startY + y * roomSize, roomSize, roomSize);
+                            
+                            // If has compass, mark triforce room
+                            if (hasCompass && roomId === 9) {
+                                fill(255, 215, 0); // Gold
+                                ellipse(startX + x * roomSize + roomSize/2, startY + y * roomSize + roomSize/2, roomSize/2, roomSize/2);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            checkDoorways(link) {
+                for (let i = 0; i < this.doors.length; i++) {
+                    const door = this.doors[i];
+                    
+                    // Check if Link is at the door
+                    if (door.isLocked) {
+                        if (this.checkCollision(link, door)) {
+                            // Try to unlock the door
+                            if (link.useKey()) {
+                                door.isLocked = false;
+                            }
+                        }
+                        continue; // Skip locked doors
+                    }
+                    
+                    // Skip boss locked doors if enemies remain
+                    if (door.isBossLocked && this.enemies.length > 0) {
+                        continue;
+                    }
+                    
+                    // Check if Link should go through the door
+                    if (this.checkCollision(link, door)) {
+                        // Reset Link position based on which door they're entering
+                        switch(door.direction) {
+                            case DIRECTION.UP:
+                                link.y = CANVAS_HEIGHT - TILE_SIZE;
+                                break;
+                            case DIRECTION.RIGHT:
+                                link.x = TILE_SIZE;
+                                break;
+                            case DIRECTION.DOWN:
+                                link.y = TILE_SIZE;
+                                break;
+                            case DIRECTION.LEFT:
+                                link.x = CANVAS_WIDTH - TILE_SIZE;
+                                break;
+                        }
+                        
+                        return {
+                            roomId: door.targetRoom,
+                            direction: door.direction
+                        };
+                    }
+                }
+                
+                return null;
+            }
+            
+            checkCollision(obj1, obj2) {
+                return (
+                    obj1.x - obj1.width/2 < obj2.x + obj2.width/2 &&
+                    obj1.x + obj1.width/2 > obj2.x - obj2.width/2 &&
+                    obj1.y - obj1.height/2 < obj2.y + obj2.height/2 &&
+                    obj1.y + obj1.height/2 > obj2.y - obj2.height/2
+                );
+            }
+            
+            addProjectile(projectile) {
+                this.projectiles.push(projectile);
+            }
+            
+            addBomb(bomb) {
+                this.bombs.push(bomb);
+            }
+        }
+        
+        // Enemy Classes
+        class Enemy {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.width = TILE_SIZE;
+                this.height = TILE_SIZE;
+                this.health = 3;
+                this.speed = 1;
+                this.direction = DIRECTION.DOWN;
+                this.attackCooldown = 0;
+                this.dropsKey = false;
+                this.isBoss = false;
+            }
+            
+            update(link) {
+                // Base enemy movement logic
+                this.move(link);
+                
+                // Update attack cooldown
+                if (this.attackCooldown > 0) {
+                    this.attackCooldown--;
+                }
+            }
+            
+            move(link) {
+                // Basic movement toward Link
+                const dx = link.x - this.x;
+                const dy = link.y - this.y;
+                
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    this.x += Math.sign(dx) * this.speed;
+                    this.direction = dx > 0 ? DIRECTION.RIGHT : DIRECTION.LEFT;
+                } else {
+                    this.y += Math.sign(dy) * this.speed;
+                    this.direction = dy > 0 ? DIRECTION.DOWN : DIRECTION.UP;
+                }
+                
+                // Keep enemy within room bounds
+                this.x = constrain(this.x, this.width/2, CANVAS_WIDTH - this.width/2);
+                this.y = constrain(this.y, this.height/2, CANVAS_HEIGHT - this.height/2);
+            }
+            
+            draw() {
+                // Base enemy drawing logic
+                rectMode(CENTER);
+                fill(255, 0, 0); // Default red for enemies
+                rect(this.x, this.y, this.width, this.height);
+            }
+            
+            takeDamage(amount) {
+                this.health -= amount;
+            }
+        }
+        
+        class Stalfos extends Enemy {
+            constructor(x, y) {
+                super(x, y, ENEMY_TYPE.STALFOS);
+                this.health = 2;
+                this.speed = 1;
+                this.color = color(200, 200, 200); // Bone white
+                this.dropsKey = Math.random() < 0.25; // 25% chance to drop a key
+            }
+            
+            draw() {
+                rectMode(CENTER);
+                fill(this.color);
+                rect(this.x, this.y, this.width, this.height);
+                
+                // Draw skull-like features
+                fill(0);
+                ellipse(this.x - 5, this.y - 5, 5, 5);
+                ellipse(this.x + 5, this.y - 5, 5, 5);
+                line(this.x - 5, this.y + 5, this.x + 5, this.y + 5);
+            }
+        }
+        
+        class Keese extends Enemy {
+            constructor(x, y) {
+                super(x, y, ENEMY_TYPE.KEESE);
+                this.health = 1;
+                this.speed = 2;
+                this.color = color(100, 100, 150); // Dark blue
+                this.attackCooldown = 90; // 1.5 seconds at 60fps
+                this.flyingOffset = 0;
+                this.dropsKey = false;
+            }
+            
+            update(link) {
+                // Random fluttering movement
+                this.x += random(-2, 2) * this.speed;
+                this.y += random(-2, 2) * this.speed;
+                
+                // Flying animation
+                this.flyingOffset = sin(frameCount * 0.2) * 5;
+                
+                // Keep enemy within room bounds
+                this.x = constrain(this.x, this.width/2, CANVAS_WIDTH - this.width/2);
+                this.y = constrain(this.y, this.height/2, CANVAS_HEIGHT - this.height/2);
+                
+                // Attack logic - shoot projectile at Link
+                if (this.attackCooldown <= 0) {
+                    // Calculate direction to Link
+                    const dx = link.x - this.x;
+                    const dy = link.y - this.y;
+                    
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        this.direction = dx > 0 ? DIRECTION.RIGHT : DIRECTION.LEFT;
+                    } else {
+                        this.direction = dy > 0 ? DIRECTION.DOWN : DIRECTION.UP;
+                    }
+                    
+                    // Create projectile
+                    game.dungeon.addProjectile(new EnemyProjectile(
+                        this.x, this.y, this.direction
+                    ));
+                    
+                    // Reset cooldown
+                    this.attackCooldown = 90;
+                } else {
+                    this.attackCooldown--;
+                }
+            }
+            
+            draw() {
+                rectMode(CENTER);
+                fill(this.color);
+                
+                // Draw bat-like shape with wings
+                push();
+                translate(this.x, this.y + this.flyingOffset);
+                
+                // Draw body
+                ellipse(0, 0, this.width * 0.6, this.height * 0.6);
+                
+                // Draw wings
+                const wingSpread = 10 + sin(frameCount * 0.2) * 8;
+                triangle(0, 0, -wingSpread, -5, -wingSpread, 5);
+                triangle(0, 0, wingSpread, -5, wingSpread, 5);
+                
+                pop();
+            }
+        }
+        
+        class Aquamentus extends Enemy {
+            constructor(x, y) {
+                super(x, y, ENEMY_TYPE.AQUAMENTUS);
+                this.health = 10;
+                this.speed = 0.5;
+                this.width = TILE_SIZE * 2;
+                this.height = TILE_SIZE * 2;
+                this.color = color(0, 150, 0); // Green
+                this.attackCooldown = 120; // 2 seconds at 60fps
+                this.moveDirection = 1; // 1 = right, -1 = left
+                this.moveCooldown = 60;
+                this.dropsKey = false;
+                this.isBoss = true;
+            }
+            
+            update(link) {
+                // Side-to-side movement pattern
+                if (this.moveCooldown <= 0) {
+                    this.moveDirection *= -1;
+                    this.moveCooldown = 60;
+                } else {
+                    this.moveCooldown--;
+                }
+                
+                this.x += this.moveDirection * this.speed;
+                
+                // Keep within bounds
+                this.x = constrain(this.x, this.width/2, CANVAS_WIDTH - this.width/2);
+                
+                // Attack logic - shoot 3 projectiles in a spread pattern
+                if (this.attackCooldown <= 0) {
+                    for (let i = -1; i <= 1; i++) {
+                        const projectileDirection = DIRECTION.DOWN;
+                        const projectile = new EnemyProjectile(
+                            this.x + i * 20, this.y, projectileDirection
+                        );
+                        projectile.angle = i * 0.3; // Add some spread
+                        game.dungeon.addProjectile(projectile);
+                    }
+                    
+                    // Reset cooldown
+                    this.attackCooldown = 120;
+                } else {
+                    this.attackCooldown--;
+                }
+            }
+            
+            draw() {
+                rectMode(CENTER);
+                fill(this.color);
+                
+                // Draw dragon-like boss
+                rect(this.x, this.y, this.width, this.height);
+                
+                // Draw horn
+                fill(200, 200, 0); // Yellow horn
+                triangle(
+                    this.x, this.y - this.height/2,
+                    this.x - 15, this.y - this.height/2 - 20,
+                    this.x + 15, this.y - this.height/2 - 20
+                );
+                
+                // Draw eyes
+                fill(255, 0, 0); // Red eyes
+                ellipse(this.x - 10, this.y - 10, 8, 8);
+                ellipse(this.x + 10, this.y - 10, 8, 8);
+            }
+        }
+        
+        // Projectile Classes
+        class Projectile {
+            constructor(x, y, direction, speed, size) {
+                this.x = x;
+                this.y = y;
+                this.direction = direction;
+                this.speed = speed || 5;
+                this.width = size || 8;
+                this.height = size || 8;
+                this.angle = 0; // Additional angle for angled projectiles
+            }
+            
+            update() {
+                // Move based on direction and angle
+                switch(this.direction) {
+                    case DIRECTION.UP:
+                        this.x += Math.sin(this.angle) * this.speed;
+                        this.y -= Math.cos(this.angle) * this.speed;
+                        break;
+                    case DIRECTION.RIGHT:
+                        this.x += Math.cos(this.angle) * this.speed;
+                        this.y += Math.sin(this.angle) * this.speed;
+                        break;
+                    case DIRECTION.DOWN:
+                        this.x += Math.sin(this.angle) * this.speed;
+                        this.y += Math.cos(this.angle) * this.speed;
+                        break;
+                    case DIRECTION.LEFT:
+                        this.x -= Math.cos(this.angle) * this.speed;
+                        this.y += Math.sin(this.angle) * this.speed;
+                        break;
+                }
+            }
+            
+            draw() {
+                // Default projectile visualization
+                ellipse(this.x, this.y, this.width, this.height);
+            }
+            
+            isOutOfBounds() {
+                return (
+                    this.x < 0 || 
+                    this.x > CANVAS_WIDTH || 
+                    this.y < 0 || 
+                    this.y > CANVAS_HEIGHT
+                );
+            }
+        }
+        
+        class PlayerProjectile extends Projectile {
+            constructor(x, y, direction, type) {
+                super(x, y, direction, 6, 8);
+                this.type = type; // 'arrow' or 'boomerang'
+                this.isPlayerProjectile = true;
+                this.returningToPlayer = false;
+                this.lifespan = 60; // For boomerang return
+                
+                if (type === 'boomerang') {
+                    this.color = color(0, 200, 255); // Cyan
+                } else { // arrow
+                    this.color = color(150, 100, 50); // Brown
+                }
+            }
+            
+            update() {
+                if (this.type === 'boomerang') {
+                    this.lifespan--;
+                    
+                    if (this.lifespan <= 0 && !this.returningToPlayer) {
+                        this.returningToPlayer = true;
+                        this.lifespan = 60; // Reset for return journey
+                    }
+                    
+                    if (this.returningToPlayer) {
+                        // Move toward Link
+                        const dx = game.link.x - this.x;
+                        const dy = game.link.y - this.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (dist < 10) {
+                            // Boomerang returned to Link
+                            return true; // Signal to remove
+                        }
+                        
+                        // Normalize and scale by speed
+                        this.x += (dx / dist) * this.speed;
+                        this.y += (dy / dist) * this.speed;
+                    } else {
+                        // Normal projectile movement
+                        super.update();
+                    }
+                } else {
+                    // Regular arrow movement
+                    super.update();
+                }
+            }
+            
+            draw() {
+                fill(this.color);
+                
+                if (this.type === 'boomerang') {
+                    // Draw boomerang as a rotating square
+                    push();
+                    translate(this.x, this.y);
+                    rotate(frameCount * 0.2);
+                    rectMode(CENTER);
+                    rect(0, 0, this.width, this.height);
+                    pop();
+                } else {
+                    // Draw arrow
+                    push();
+                    translate(this.x, this.y);
+                    
+                    switch(this.direction) {
+                        case DIRECTION.UP:
+                            rotate(-HALF_PI);
+                            break;
+                        case DIRECTION.RIGHT:
+                            // Default orientation
+                            break;
+                        case DIRECTION.DOWN:
+                            rotate(HALF_PI);
+                            break;
+                        case DIRECTION.LEFT:
+                            rotate(PI);
+                            break;
+                    }
+                    
+                    // Arrow body
+                    rect(0, 0, this.width * 2, this.width / 2);
+                    
+                    // Arrow head
+                    triangle(
+                        this.width, -this.width/2,
+                        this.width * 1.5, 0,
+                        this.width, this.width/2
+                    );
+                    
+                    pop();
+                }
+            }
+        }
+        
+        class EnemyProjectile extends Projectile {
+            constructor(x, y, direction) {
+                super(x, y, direction, 3, 6);
+                this.isPlayerProjectile = false;
+                this.color = color(255, 100, 100); // Light red
+            }
+            
+            draw() {
+                fill(this.color);
+                ellipse(this.x, this.y, this.width, this.height);
+            }
+        }
+        
+        // Item Class
+        class Item {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.width = TILE_SIZE * 0.75;
+                this.height = TILE_SIZE * 0.75;
+                this.floatOffset = 0;
+            }
+            
+            update() {
+                // Floating animation
+                this.floatOffset = sin(frameCount * 0.1) * 3;
+            }
+            
+            draw() {
+                rectMode(CENTER);
+                
+                // Update floating effect
+                this.update();
+                
+                // Draw item based on type
+                switch(this.type) {
+                    case ITEM_TYPE.KEY:
+                        fill(255, 215, 0); // Gold
+                        rect(this.x, this.y + this.floatOffset, this.width, this.height);
+                        break;
+                        
+                    case ITEM_TYPE.HEART:
+                        fill(255, 0, 0); // Red
+                        ellipse(this.x, this.y + this.floatOffset, this.width, this.height);
+                        break;
+                        
+                    case ITEM_TYPE.MAP:
+                        fill(200, 200, 200); // Gray
+                        rect(this.x, this.y + this.floatOffset, this.width, this.height);
+                        break;
+                        
+                    case ITEM_TYPE.COMPASS:
+                        fill(255, 165, 0); // Orange
+                        ellipse(this.x, this.y + this.floatOffset, this.width, this.height);
+                        break;
+                        
+                    case ITEM_TYPE.BOW:
+                        fill(150, 100, 50); // Brown
+                        rect(this.x, this.y + this.floatOffset, this.width / 4, this.height);
+                        break;
+                        
+                    case ITEM_TYPE.BOMB:
+                        fill(0);
+                        ellipse(this.x, this.y + this.floatOffset, this.width, this.height);
+                        break;
+                        
+                    case ITEM_TYPE.BOOMERANG:
+                        fill(0, 200, 255); // Cyan
+                        rect(this.x, this.y + this.floatOffset, this.width, this.height / 2);
+                        break;
+                        
+                    case ITEM_TYPE.CANDLE:
+                        fill(255, 165, 0); // Orange
+                        rect(this.x, this.y + this.floatOffset, this.width / 2, this.height);
+                        break;
+                        
+                    case ITEM_TYPE.TRIFORCE:
+                        fill(255, 215, 0); // Gold
+                        triangle(
+                            this.x, this.y - this.height/2 + this.floatOffset,
+                            this.x - this.width/2, this.y + this.height/2 + this.floatOffset,
+                            this.x + this.width/2, this.y + this.height/2 + this.floatOffset
+                        );
+                        break;
+                        
+                    case ITEM_TYPE.HEART_CONTAINER:
+                        fill(255, 0, 0); // Red
+                        ellipse(this.x, this.y + this.floatOffset, this.width * 1.5, this.height * 1.5);
+                        break;
+                }
+            }
+        }
+        
+        // Bomb Class
+        class Bomb {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = 16;
+                this.height = 16;
+                this.timer = 120; // 2 seconds at 60fps
+                this.exploded = false;
+                this.explosionRadius = 0;
+                this.maxExplosionRadius = 50;
+                this.explosionDuration = 30;
+                this.explosionTimer = 0;
+                this.blastRadius = 60;
+                this.processed = false;
+            }
+            
+            update() {
+                if (!this.exploded) {
+                    this.timer--;
+                    if (this.timer <= 0) {
+                        this.exploded = true;
+                        this.explosionTimer = this.explosionDuration;
+                    }
+                } else {
+                    this.explosionTimer--;
+                    this.explosionRadius = (this.explosionDuration - this.explosionTimer) / this.explosionDuration * this.maxExplosionRadius;
+                }
+            }
+            
+            draw() {
+                if (!this.exploded) {
+                    // Draw bomb
+                    fill(0);
+                    ellipse(this.x, this.y, this.width, this.height);
+                    
+                    // Draw fuse
+                    stroke(100);
+                    strokeWeight(2);
+                    line(this.x, this.y - this.height/2, this.x, this.y - this.height/2 - 5);
+                    
+                    // Draw blinking fuse tip if about to explode
+                    if (this.timer < 30 && this.timer % 6 < 3) {
+                        fill(255, 165, 0); // Orange
+                        noStroke();
+                        ellipse(this.x, this.y - this.height/2 - 7, 4, 4);
+                    }
+                } else {
+                    // Draw explosion
+                    noStroke();
+                    
+                    // Outer explosion
+                    fill(255, 165, 0, 100); // Orange with transparency
+                    ellipse(this.x, this.y, this.explosionRadius * 2, this.explosionRadius * 2);
+                    
+                    // Inner explosion
+                    fill(255, 0, 0, 150); // Red with transparency
+                    ellipse(this.x, this.y, this.explosionRadius, this.explosionRadius);
+                }
+            }
+            
+            shouldRemove() {
+                return this.exploded && this.explosionTimer <= 0;
+            }
+        }
+        
+        // Block Class
+        class Block {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = TILE_SIZE;
+                this.height = TILE_SIZE;
+                this.isMovable = false;
+                this.isSecret = false;
+                this.pushDirection = null;
+                this.pushProgress = 0;
+                this.pushSpeed = 0.05;
+                this.revealed = false;
+                this.revealedRoomId = null;
+            }
+            
+            update(link) {
+                if (!this.isMovable || this.pushDirection !== null) return;
+                
+                // Check if Link is pushing the block
+                const dx = this.x - link.x;
+                const dy = this.y - link.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < TILE_SIZE * 1.2) {
+                    // Determine push direction based on Link's position
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        // Pushing horizontally
+                        if (dx > 0 && link.direction === DIRECTION.RIGHT) {
+                            this.pushDirection = DIRECTION.RIGHT;
+                        } else if (dx < 0 && link.direction === DIRECTION.LEFT) {
+                            this.pushDirection = DIRECTION.LEFT;
+                        }
+                    } else {
+                        // Pushing vertically
+                        if (dy > 0 && link.direction === DIRECTION.DOWN) {
+                            this.pushDirection = DIRECTION.DOWN;
+                        } else if (dy < 0 && link.direction === DIRECTION.UP) {
+                            this.pushDirection = DIRECTION.UP;
+                        }
+                    }
+                }
+                
+                // Handle block movement if being pushed
+                if (this.pushDirection !== null) {
+                    this.pushProgress += this.pushSpeed;
+                    
+                    if (this.pushProgress >= 1) {
+                        // Complete push
+                        switch(this.pushDirection) {
+                            case DIRECTION.UP:
+                                this.y -= TILE_SIZE;
+                                break;
+                            case DIRECTION.RIGHT:
+                                this.x += TILE_SIZE;
+                                break;
+                            case DIRECTION.DOWN:
+                                this.y += TILE_SIZE;
+                                break;
+                            case DIRECTION.LEFT:
+                                this.x -= TILE_SIZE;
+                                break;
+                        }
+                        
+                        this.pushDirection = null;
+                        this.pushProgress = 0;
+                        
+                        // Check if this reveals a secret
+                        if (this.isSecret) {
+                            this.revealed = true;
+                        }
+                    }
+                }
+            }
+            
+            draw() {
+                rectMode(CENTER);
+                fill(100, 100, 100); // Gray for blocks
+                
+                let drawX = this.x;
+                let drawY = this.y;
+                
+                // Apply push animation
+                if (this.pushDirection !== null) {
+                    switch(this.pushDirection) {
+                        case DIRECTION.UP:
+                            drawY = this.y - this.pushProgress * TILE_SIZE;
+                            break;
+                        case DIRECTION.RIGHT:
+                            drawX = this.x + this.pushProgress * TILE_SIZE;
+                            break;
+                        case DIRECTION.DOWN:
+                            drawY = this.y + this.pushProgress * TILE_SIZE;
+                            break;
+                        case DIRECTION.LEFT:
+                            drawX = this.x - this.pushProgress * TILE_SIZE;
+                            break;
+                    }
+                }
+                
+                rect(drawX, drawY, this.width, this.height);
+                
+                // Add visual cue for movable blocks
+                if (this.isMovable) {
+                    stroke(255);
+                    strokeWeight(1);
+                    line(drawX - 10, drawY - 10, drawX + 10, drawY - 10);
+                    line(drawX - 10, drawY, drawX + 10, drawY);
+                    line(drawX - 10, drawY + 10, drawX + 10, drawY + 10);
+                }
+            }
+        }
+        
+        // Door Class
+        class Door {
+            constructor(x, y, direction, targetRoom) {
+                this.x = x;
+                this.y = y;
+                this.direction = direction;
+                this.targetRoom = targetRoom;
+                this.isLocked = false;
+                this.isBossLocked = false;
+                
+                // Set width and height based on direction
+                if (direction === DIRECTION.UP || direction === DIRECTION.DOWN) {
+                    this.width = TILE_SIZE * 2;
+                    this.height = TILE_SIZE;
+                } else {
+                    this.width = TILE_SIZE;
+                    this.height = TILE_SIZE * 2;
+                }
+            }
+            
+            draw() {
+                rectMode(CENTER);
+                
+                if (this.isLocked) {
+                    fill(100, 100, 100); // Gray for locked doors
+                } else if (this.isBossLocked) {
+                    fill(150, 0, 0); // Dark red for boss-locked doors
+                } else {
+                    fill(150, 100, 50); // Brown for open doors
+                }
+                
+                rect(this.x, this.y, this.width, this.height);
+                
+                // Draw lock if door is locked
+                if (this.isLocked) {
+                    fill(255, 215, 0); // Gold
+                    ellipse(this.x, this.y, TILE_SIZE / 2, TILE_SIZE / 2);
+                }
+                
+                // Draw boss lock if door is boss-locked
+                if (this.isBossLocked) {
+                    fill(255, 0, 0); // Red
+                    ellipse(this.x, this.y, TILE_SIZE / 2, TILE_SIZE / 2);
+                }
+            }
+        }
+        
+        // Global game instance
+        let game;
+        
+        function setup() {
+            createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+            game = new Game();
+        }
+        
+        function draw() {
+            game.update();
+            game.draw();
+        }
+        
+        function keyPressed() {
+            game.handleKeyPress(key);
+        }
+    </script>
+</body>
+</html>
