@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4 Bedroom House - A-Frame</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <!-- A-Frame Extras for controls with collision detection -->
+    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.1.0/dist/aframe-extras.min.js"></script>
+    <style>
+        .floor-plan {
+            font-family: monospace;
+            white-space: pre;
+            line-height: 1.2;
+            font-size: 12px;
+            background-color: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px;
+            display: inline-block;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        h1, h2 {
+            text-align: center;
+        }
+        
+        .instructions {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 10px;
+            background-color: #e9f7fe;
+            border-radius: 5px;
+        }
+        
+        /* Hide A-Frame VR button since we're focusing on desktop navigation */
+        .a-enter-vr {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>4 Bedroom House Floor Plan</h1>
+        
+        <div class="instructions">
+            <h2>Instructions</h2>
+            <p>Use WASD keys or arrow keys to move, and mouse to look around. You cannot walk through walls.</p>
+            <p>Press ESC to regain mouse control.</p>
+        </div>
+        
+        <!-- ASCII Floor Plan -->
+        <pre class="floor-plan">
+/*
+ * Floor Plan - 4 Bedroom House
+ * Legend:
+ * # - Walls
+ * D - Doors
+ * W - Windows
+ * B - Bed
+ * T - Table
+ * K - Kitchen Counter
+ * S - Sofa
+ * C - Chair
+ */
+
+##############################################################
+#                                  #                         #
+#                                  #                         #
+#                                  #                         #
+#        LIVING ROOM               #      BEDROOM 1          #
+#              S S                 #          B B            #
+#            S     S               #                         #
+#          S         S             #                         #
+#        T                         D                         #
+#                                  #                         #
+#                                  #          W              #
+#                   W      W       ##########D################
+#                                  #                         #
+#                                  #                         #
+#                                  #                         #
+#####D##########################D###      BEDROOM 2          #
+#                              #   #          B B            #
+#   K K K K                    #   #                         #
+#                              #   #                         #
+#   K       K     DINING       D   #                         #
+#                              #   #          W              #
+#   K       K     T  C C       #   ##########D################
+#                              #   #                         #
+#   K K K K       C  C C       #   #                         #
+#                              #   #                         #
+#        KITCHEN               #   #      BEDROOM 3          #
+#                              #   #          B B            #
+#                              #   #                         #
+#        W                     #   #                         #
+#                              #   #                         #
+##########D#####################   #          W              #
+#                                  ##########D################
+#                                  #                         #
+#                                  #                         #
+#                                  #                         #
+#      BATHROOM                    #      BEDROOM 4          #
+#                                  #          B B            #
+#                                  #                         #
+#                                  #                         #
+#                                  #                         #
+#              W                   #          W              #
+##############################################################
+</pre>
+    </div>
+    
+    <!-- A-Frame Scene -->
+    <a-scene>
+        <a-assets>
+            <img id="floor-texture" src="https://cdn.jsdelivr.net/gh/aframevr/sample-assets@master/assets/images/wood.jpg">
+            <img id="wall-texture" src="https://cdn.jsdelivr.net/gh/aframevr/sample-assets@master/assets/images/brick-tiles.jpg">
+            <img id="ceiling-texture" src="https://cdn.jsdelivr.net/gh/aframevr/sample-assets@master/assets/images/ceiling.jpg">
+        </a-assets>
+        
+        <!-- Player/Camera -->
+        <a-entity id="player"
+                  position="5 1.6 5" 
+                  movement-controls="speed: 0.2; constrainToNavMesh: true;"
+                  look-controls="pointerLockEnabled: true">
+            <a-entity camera position="0 0 0"></a-entity>
+            <a-entity cursor
+                      position="0 0 -1"
+                      geometry="primitive: ring; radiusInner: 0.02; radiusOuter: 0.03"
+                      material="color: white; shader: flat">
+            </a-entity>
+        </a-entity>
+        
+        <!-- Environment -->
+        <a-entity id="environment">
+            <!-- Floor -->
+            <a-plane position="30 0 25" 
+                     rotation="-90 0 0" 
+                     width="60" 
+                     height="50" 
+                     material="src: #floor-texture; repeat: 15 12.5" 
+                     nav-mesh>
+            </a-plane>
+            
+            <!-- Ceiling -->
+            <a-plane position="30 4 25" 
+                     rotation="90 0 0" 
+                     width="60" 
+                     height="50" 
+                     material="src: #ceiling-texture; repeat: 15 12.5">
+            </a-plane>
+            
+            <!-- Exterior Walls -->
+            <!-- North Wall -->
+            <a-box position="30 2 0.5" 
+                   width="60" 
+                   height="4" 
+                   depth="1" 
+                   material="src: #wall-texture; repeat: 15 1" 
+                   static-body>
+            </a-box>
+            
+            <!-- South Wall -->
+            <a-box position="30 2 49.5" 
+                   width="60" 
+                   height="4" 
+                   depth="1" 
+                   material="src: #wall-texture; repeat: 15 1" 
+                   static-body>
+            </a-box>
+            
+            <!-- East Wall -->
+            <a-box position="59.5 2 25" 
+                   width="1" 
+                   height="4" 
+                   depth="50" 
+                   material="src: #wall-texture; repeat: 12.5 1" 
+                   static-body>
+            </a-box>
+            
+            <!-- West Wall -->
+            <a-box position="0.5 2 25" 
+                   width="1" 
+                   height="4" 
+                   depth="50" 
+                   material="src: #wall-texture; repeat: 12.5 1" 
+                   static-body>
+            </a-box>
+            
+            <!-- Interior Walls -->
+            <!-- Living Room / Bedrooms Divider -->
+            <a-box position="40 2 15" 
+                   width="1" 
+                   height="4" 
+                   depth="30" 
+                   material="src: #wall-texture; repeat: 7.5 1" 
+                   static-body>
+            </a-box>
+            
+            <!-- Bedroom Dividers -->
+            <a-box position="50 2 15" 
+                   width="20" 
+                   height="4" 
+                   depth="1" 
+                   material="src: #wall-texture; repeat: 5 1" 
+                   static-body>
+            </a-box>
+            
+            <a-box position="50 2 25" 
+                   width="20" 
+                   height="4" 
+                   depth="1" 
+                   material="src: #wall-texture; repeat: 5 1" 
+                   static-body>
+            </a-box>
+            
+            <a-box position="50 2 35" 
+                   width="20" 
+                   height="4" 
+                   depth="1" 
+                   material="src: #wall-texture; repeat: 5 1" 
+                   static-body>
+            </a-box>
+            
+            <!-- Kitchen / Dining / Hallway Divider -->
+            <a-box position="20 2 30" 
+                   width="1" 
+                   height="4" 
+                   depth="15" 
+                   material="src: #wall-texture; repeat: 3.75 1" 
+                   static-body>
+            </a-box>
+            
+            <a-box position="30 2 37.5" 
+                   width="20" 
+                   height="4" 
+                   depth="1" 
+                   material="src: #wall-texture; repeat: 5 1" 
+                   static-body>
+            </a-box>
+            
+            <!-- Door Openings (gaps in walls) -->
+            <!-- Bedroom 1 Door -->
+            <a-box position="40 2 20" 
+                   width="1" 
+                   height="4" 
+                   depth="2" 
+                   material="src: #wall-texture; repeat: 0.5 1"
+                   opacity="0"
+                   visible="false">
+            </a-box>
+            
+            <!-- Bedroom 2 Door -->
+            <a-box position="40 2 30" 
+                   width="1" 
+                   height="4" 
+                   depth="2" 
+                   material="src: #wall-texture; repeat: 0.5 1"
+                   opacity="0"
+                   visible="false">
+            </a-box>
+            
+            <!-- Bedroom 3 Door -->
+            <a-box position="40 2 40" 
+                   width="1" 
+                   height="4" 
+                   depth="2" 
+                   material="src: #wall-texture; repeat: 0.5 1"
+                   opacity="0"
+                   visible="false">
+            </a-box>
+            
+            <!-- Kitchen Door -->
+            <a-box position="7.5 2 37.5" 
+                   width="2" 
+                   height="4" 
+                   depth="1" 
+                   material="src: #wall-texture; repeat: 0.5 1"
+                   opacity="0"
+                   visible="false">
+            </a-box>
+            
+            <!-- Dining Room Door -->
+            <a-box position="20 2 25" 
+                   width="1" 
+                   height="4" 
+                   depth="2" 
+                   material="src: #wall-texture; repeat: 0.5 1"
+                   opacity="0"
+                   visible="false">
+            </a-box>
+            
+            <!-- Living Room to Hallway Door -->
+            <a-box position="27.5 2 15" 
+                   width="2" 
+                   height="4" 
+                   depth="1" 
+                   material="src: #wall-texture; repeat: 0.5 1"
+                   opacity="0"
+                   visible="false">
+            </a-box>
+            
+            <!-- Furniture -->
+            <!-- Living Room Sofa -->
+            <a-box position="15 1 10" 
+                   width="10" 
+                   height="2" 
+                   depth="3" 
+                   color="#8B4513" 
+                   static-body>
+            </a-box>
+            
+            <!-- Dining Table -->
+            <a-box position="15 1 25" 
+                   width="4" 
+                   height="1.5" 
+                   depth="4" 
+                   color="#8B4513" 
+                   static-body>
+            </a-box>
+            
+            <!-- Kitchen Counter -->
+            <a-box position="5 1.5 20" 
+                   width="10" 
+                   height="1" 
+                   depth="2" 
+                   color="#A9A9A9" 
+                   static-body>
+            </a-box>
+            
+            <!-- Bedroom Beds -->
+            <!-- Bedroom 1 -->
+            <a-box position="50 1 10" 
+                   width="4" 
+                   height="1" 
+                   depth="6" 
+                   color="#4169E1" 
+                   static-body>
+            </a-box>
+            
+            <!-- Bedroom 2 -->
+            <a-box position="50 1 20" 
+                   width="4" 
+                   height="1" 
+                   depth="6" 
+                   color="#4169E1" 
+                   static-body>
+            </a-box>
+            
+            <!-- Bedroom 3 -->
+            <a-box position="50 1 30" 
+                   width="4" 
+                   height="1" 
+                   depth="6" 
+                   color="#4169E1" 
+                   static-body>
+            </a-box>
+            
+            <!-- Bedroom 4 -->
+            <a-box position="50 1 40" 
+                   width="4" 
+                   height="1" 
+                   depth="6" 
+                   color="#4169E1" 
+                   static-body>
+            </a-box>
+            
+            <!-- Dining Chairs -->
+            <a-box position="17 1 25" 
+                   width="1" 
+                   height="2" 
+                   depth="1" 
+                   color="#8B4513" 
+                   static-body>
+            </a-box>
+            
+            <a-box position="13 1 25" 
+                   width="1" 
+                   height="2" 
+                   depth="1" 
+                   color="#8B4513" 
+                   static-body>
+            </a-box>
+            
+            <a-box position="15 1 27" 
+                   width="1" 
+                   height="2" 
+                   depth="1" 
+                   color="#8B4513" 
+                   static-body>
+            </a-box>
+            
+            <a-box position="15 1 23" 
+                   width="1" 
+                   height="2" 
+                   depth="1" 
+                   color="#8B4513" 
+                   static-body>
+            </a-box>
+        </a-entity>
+        
+        <!-- Windows (just for visual indication, not functional) -->
+        <a-entity id="windows">
+            <a-plane position="30 2 0.6" rotation="0 0 0" width="6" height="2" color="#87CEEB" opacity="0.5"></a-plane>
+            <a-plane position="15 2 0.6" rotation="0 0 0" width="6" height="2" color="#87CEEB" opacity="0.5"></a-plane>
+            <a-plane position="50 2 0.6" rotation="0 0 0" width="6" height="2" color="#87CEEB" opacity="0.5"></a-plane>
+            <a-plane position="50 2 15.6" rotation="0 0 0" width="6" height="2" color="#87CEEB" opacity="0.5"></a-plane>
+            <a-plane position="50 2 25.6" rotation="0 0 0" width="6" height="2" color="#87CEEB" opacity="0.5"></a-plane>
+            <a-plane position="50 2 35.6" rotation="0 0 0" width="6" height="2" color="#87CEEB" opacity="0.5"></a-plane>
+            <a-plane position="50 2 49.4" rotation="0 180 0" width="6" height="2" color="#87CEEB" opacity="0.5"></a-plane>
+            <a-plane position="7 2 49.4" rotation="0 180 0" width="6" height="2" color="#87CEEB" opacity="0.5"></a-plane>
+            <a-plane position="0.6 2 10" rotation="0 90 0" width="6" height="2" color="#87CEEB" opacity="0.5"></a-plane>
+        </a-entity>
+        
+        <!-- Lighting -->
+        <a-entity id="lighting">
+            <a-light type="ambient" color="#BBB" intensity="0.5"></a-light>
+            <a-light type="point" color="#FFF" position="15 3.5 15" intensity="0.6"></a-light>
+            <a-light type="point" color="#FFF" position="50 3.5 10" intensity="0.5"></a-light>
+            <a-light type="point" color="#FFF" position="50 3.5 20" intensity="0.5"></a-light>
+            <a-light type="point" color="#FFF" position="50 3.5 30" intensity="0.5"></a-light>
+            <a-light type="point" color="#FFF" position="50 3.5 40" intensity="0.5"></a-light>
+            <a-light type="point" color="#FFF" position="10 3.5 45" intensity="0.5"></a-light>
+            <a-light type="point" color="#FFF" position="10 3.5 25" intensity="0.5"></a-light>
+        </a-entity>
+        
+        <!-- Room Labels -->
+        <a-entity id="room-labels">
+            <a-text value="Living Room" position="15 3.5 7" rotation="0 0 0" color="#000" scale="1.5 1.5 1.5"></a-text>
+            <a-text value="Kitchen" position="5 3.5 30" rotation="0 0 0" color="#000" scale="1.5 1.5 1.5"></a-text>
+            <a-text value="Dining Room" position="15 3.5 25" rotation="0 0 0" color="#000" scale="1.5 1.5 1.5"></a-text>
+            <a-text value="Bathroom" position="10 3.5 45" rotation="0 0 0" color="#000" scale="1.5 1.5 1.5"></a-text>
+            <a-text value="Bedroom 1" position="50 3.5 10" rotation="0 0 0" color="#000" scale="1.5 1.5 1.5"></a-text>
+            <a-text value="Bedroom 2" position="50 3.5 20" rotation="0 0 0" color="#000" scale="1.5 1.5 1.5"></a-text>
+            <a-text value="Bedroom 3" position="50 3.5 30" rotation="0 0 0" color="#000" scale="1.5 1.5 1.5"></a-text>
+            <a-text value="Bedroom 4" position="50 3.5 40" rotation="0 0 0" color="#000" scale="1.5 1.5 1.5"></a-text>
+        </a-entity>
+    </a-scene>
+    
+    <script>
+        // Register navigation mesh for collision detection
+        AFRAME.registerComponent('nav-mesh', {
+            init: function () {
+                this.el.setAttribute('static-body', '');
+                this.el.setAttribute('visible', 'false');
+            }
+        });
+    </script>
+</body>
+</html>

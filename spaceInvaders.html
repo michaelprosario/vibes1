@@ -54,6 +54,7 @@
                 this.isPlaying = false;
                 this.isGameOver = false;
                 this.highScores = [];
+                this.loadHighScores();
             }
             
             startGame() {
@@ -85,6 +86,25 @@
                 this.highScores.push(this.score);
                 this.highScores.sort((a, b) => b - a);
                 this.highScores = this.highScores.slice(0, 10); // Keep top 10
+                
+                // Save to localStorage
+                try {
+                    localStorage.setItem('spaceInvadersHighScores', JSON.stringify(this.highScores));
+                } catch (e) {
+                    console.error("Could not save high scores to localStorage", e);
+                }
+            }
+            
+            loadHighScores() {
+                try {
+                    const savedScores = localStorage.getItem('spaceInvadersHighScores');
+                    if (savedScores) {
+                        this.highScores = JSON.parse(savedScores);
+                    }
+                } catch (e) {
+                    console.error("Could not load high scores from localStorage", e);
+                    this.highScores = [];
+                }
             }
         }
         
@@ -98,9 +118,6 @@
                 this.x = GAME_WIDTH / 2 - PLAYER_WIDTH / 2;
                 this.y = GAME_HEIGHT - PLAYER_HEIGHT - 20;
                 this.speed = 8;
-                this.isShooting = false;
-                this.cooldown = 0;
-                this.cooldownTime = 15;
             }
             
             move(direction) {
@@ -112,18 +129,7 @@
             }
             
             shoot() {
-                if (!this.isShooting && this.cooldown === 0) {
-                    this.isShooting = true;
-                    this.cooldown = this.cooldownTime;
-                    return new Bullet(this.x + PLAYER_WIDTH / 2 - BULLET_WIDTH / 2, this.y, -10);
-                }
-                return null;
-            }
-            
-            update() {
-                if (this.cooldown > 0) {
-                    this.cooldown--;
-                }
+                return new Bullet(this.x + PLAYER_WIDTH / 2 - BULLET_WIDTH / 2, this.y, -10);
             }
             
             draw() {
@@ -177,6 +183,42 @@
             }
         }
         
+        // Class for managing player bullets
+        class BulletManager {
+            constructor() {
+                this.bullets = [];
+            }
+            
+            addBullet(bullet) {
+                this.bullets.push(bullet);
+            }
+            
+            update() {
+                for (let i = this.bullets.length - 1; i >= 0; i--) {
+                    this.bullets[i].update();
+                    if (this.bullets[i].isOffScreen()) {
+                        this.bullets.splice(i, 1);
+                    }
+                }
+            }
+            
+            draw() {
+                for (const bullet of this.bullets) {
+                    bullet.draw();
+                }
+            }
+            
+            getBullets() {
+                return this.bullets;
+            }
+            
+            removeBullet(index) {
+                if (index >= 0 && index < this.bullets.length) {
+                    this.bullets.splice(index, 1);
+                }
+            }
+        }
+        
         // Class for aliens
         class Alien {
             constructor(x, y, type) {
@@ -226,7 +268,7 @@
                 this.moveTimer = 0;
                 this.moveInterval = 30;
                 this.shootingProbability = 0.005;
-                this.bullets = [];
+                this.bulletManager = new BulletManager();
                 
                 // Initialize aliens in rows and columns
                 for (let row = 0; row < ALIEN_ROWS; row++) {
@@ -282,7 +324,7 @@
                     }
                     
                     // Increase speed as aliens are destroyed
-                    const aliveCount = this.aliens.filter(alien => alien.isAlive).length;
+                    const aliveCount = this.getAliveCount();
                     const totalAliens = ALIEN_ROWS * ALIEN_COLS;
                     this.moveInterval = Math.max(5, 30 - Math.floor((totalAliens - aliveCount) / 10) * 3);
                     
@@ -293,7 +335,7 @@
                 // Alien shooting
                 this.aliens.forEach(alien => {
                     if (alien.isAlive && Math.random() < this.shootingProbability) {
-                        this.bullets.push(new Bullet(
+                        this.bulletManager.addBullet(new Bullet(
                             alien.x + ALIEN_WIDTH / 2 - BULLET_WIDTH / 2,
                             alien.y + ALIEN_HEIGHT,
                             5,
@@ -303,16 +345,10 @@
                 });
                 
                 // Update bullets
-                for (let i = this.bullets.length - 1; i >= 0; i--) {
-                    this.bullets[i].update();
-                    if (this.bullets[i].isOffScreen()) {
-                        this.bullets.splice(i, 1);
-                    }
-                }
+                this.bulletManager.update();
                 
                 // Check if all aliens are destroyed
-                const remainingAliens = this.aliens.filter(alien => alien.isAlive).length;
-                if (remainingAliens === 0) {
+                if (this.getAliveCount() === 0) {
                     gameState.level++;
                     this.reset();
                     this.moveInterval = Math.max(5, 30 - (gameState.level - 1) * 3);
@@ -322,9 +358,21 @@
                 }
             }
             
+            getAliveCount() {
+                return this.aliens.filter(alien => alien.isAlive).length;
+            }
+            
             draw() {
                 this.aliens.forEach(alien => alien.draw());
-                this.bullets.forEach(bullet => bullet.draw());
+                this.bulletManager.draw();
+            }
+            
+            getAliens() {
+                return this.aliens;
+            }
+            
+            getBulletManager() {
+                return this.bulletManager;
             }
         }
         
@@ -419,11 +467,12 @@
                 }
             }
             
-            checkBulletCollisions(bullets, isPlayerBullets) {
+            checkBulletCollisions(bulletManager) {
+                const bullets = bulletManager.getBullets();
                 for (let i = bullets.length - 1; i >= 0; i--) {
                     for (let j = 0; j < this.bunkers.length; j++) {
                         if (this.bunkers[j].checkBulletCollision(bullets[i])) {
-                            bullets.splice(i, 1);
+                            bulletManager.removeBullet(i);
                             break;
                         }
                     }
@@ -481,6 +530,8 @@
             }
             
             getCollisionRect() {
+                if (!this.isActive) return null;
+                
                 return {
                     x: this.x,
                     y: this.y,
@@ -493,24 +544,29 @@
         // Collision detector class
         class CollisionDetector {
             static checkCollision(rect1, rect2) {
+                if (!rect1 || !rect2) return false;
+                
                 return rect1.x < rect2.x + rect2.width &&
                        rect1.x + rect1.width > rect2.x &&
                        rect1.y < rect2.y + rect2.height &&
                        rect1.y + rect1.height > rect2.y;
             }
             
-            static checkPlayerBullets(playerBullets, alienManager, ufo) {
+            static checkPlayerBullets(playerBulletManager, alienManager, ufo) {
+                const playerBullets = playerBulletManager.getBullets();
+                const aliens = alienManager.getAliens();
+                
                 for (let i = playerBullets.length - 1; i >= 0; i--) {
                     const bullet = playerBullets[i];
                     
                     // Check for alien collisions
-                    for (let j = 0; j < alienManager.aliens.length; j++) {
-                        const alien = alienManager.aliens[j];
+                    for (let j = 0; j < aliens.length; j++) {
+                        const alien = aliens[j];
                         if (!alien.isAlive) continue;
                         
                         if (this.checkCollision(bullet.getCollisionRect(), alien.getCollisionRect())) {
                             alien.isAlive = false;
-                            playerBullets.splice(i, 1);
+                            playerBulletManager.removeBullet(i);
                             
                             // Add score based on alien type
                             const scoreValues = [30, 20, 10]; // Points for different alien types
@@ -520,22 +576,25 @@
                     }
                     
                     // Check for UFO collision
-                    if (ufo.isActive && this.checkCollision(bullet.getCollisionRect(), ufo.getCollisionRect())) {
+                    const ufoRect = ufo.getCollisionRect();
+                    if (ufoRect && this.checkCollision(bullet.getCollisionRect(), ufoRect)) {
                         gameState.addScore(ufo.pointValue);
                         ufo.isActive = false;
                         ufo.reset();
-                        playerBullets.splice(i, 1);
+                        playerBulletManager.removeBullet(i);
                         return;
                     }
                 }
             }
             
-            static checkAlienBullets(alienBullets, player) {
+            static checkAlienBullets(alienBulletManager, player) {
+                const alienBullets = alienBulletManager.getBullets();
+                
                 for (let i = alienBullets.length - 1; i >= 0; i--) {
                     const bullet = alienBullets[i];
                     
                     if (this.checkCollision(bullet.getCollisionRect(), player.getCollisionRect())) {
-                        alienBullets.splice(i, 1);
+                        alienBulletManager.removeBullet(i);
                         gameState.loseLife();
                         player.reset();
                         break;
@@ -562,6 +621,7 @@
                         alienManager.reset();
                         bunkerManager.reset();
                         ufo.reset();
+                        playerBulletManager.bullets = [];
                     }
                 });
                 
@@ -642,7 +702,7 @@
         let ufo;
         let inputHandler;
         let uiRenderer;
-        let playerBullets = [];
+        let playerBulletManager;
         
         function preload() {
             // Images would be loaded here if available
@@ -658,6 +718,7 @@
             // Initialize game objects
             gameState = new GameState();
             player = new Player();
+            playerBulletManager = new BulletManager();
             alienManager = new AlienManager();
             bunkerManager = new BunkerManager();
             ufo = new UFO();
@@ -677,37 +738,26 @@
                     player.move('right');
                 }
                 if (inputHandler.isKeyDown('Space')) {
-                    const bullet = player.shoot();
-                    if (bullet) {
-                        playerBullets.push(bullet);
-                    }
+                    playerBulletManager.addBullet(player.shoot());
                 }
                 
                 // Update game objects
-                player.update();
+                playerBulletManager.update();
                 alienManager.update();
                 ufo.update();
                 
-                // Update bullets
-                for (let i = playerBullets.length - 1; i >= 0; i--) {
-                    playerBullets[i].update();
-                    if (playerBullets[i].isOffScreen()) {
-                        playerBullets.splice(i, 1);
-                    }
-                }
-                
                 // Check collisions
-                bunkerManager.checkBulletCollisions(playerBullets, true);
-                bunkerManager.checkBulletCollisions(alienManager.bullets, false);
-                CollisionDetector.checkPlayerBullets(playerBullets, alienManager, ufo);
-                CollisionDetector.checkAlienBullets(alienManager.bullets, player);
+                bunkerManager.checkBulletCollisions(playerBulletManager);
+                bunkerManager.checkBulletCollisions(alienManager.getBulletManager());
+                CollisionDetector.checkPlayerBullets(playerBulletManager, alienManager, ufo);
+                CollisionDetector.checkAlienBullets(alienManager.getBulletManager(), player);
                 
                 // Draw game objects
                 player.draw();
                 alienManager.draw();
                 bunkerManager.draw();
                 ufo.draw();
-                playerBullets.forEach(bullet => bullet.draw());
+                playerBulletManager.draw();
                 
                 // Draw UI
                 uiRenderer.drawGameUI();

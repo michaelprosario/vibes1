@@ -22,5 +22,5 @@ Game Session Stories
 As a new player, I want a simple control scheme so I can learn the game quickly.
 As a returning player, I want progressive difficulty so I remain challenged as my skills improve.
 As a competitive player, I want leaderboards so I can see how my scores rank against others.
-As a casual player, I want quick game sessions so I can play in short time windows.
+As a player, I should be able to shoot without restrictions.
 
