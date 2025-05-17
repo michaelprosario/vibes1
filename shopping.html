@@ -427,7 +427,12 @@
             
             <div class="list-area">
                 <div class="active-list-header">
-                    <h2 id="active-list-name">Select a list</h2>
+                    <div style="display: flex; align-items: center;">
+                        <h2 id="active-list-name">Select a list</h2>
+                        <div id="total-cost" style="margin-left: 1rem; font-size: 1.2rem; padding: 0.25rem 0.75rem; background-color: var(--light-gray); border-radius: 4px; display: none;">
+                            Total: $<span id="total-cost-value">0.00</span>
+                        </div>
+                    </div>
                     <div id="list-actions" style="display: none;">
                         <button class="btn btn-secondary btn-sm" id="rename-list-btn">Rename</button>
                         <button class="btn btn-secondary btn-sm" id="duplicate-list-btn">Duplicate</button>
@@ -633,6 +638,23 @@
                 
                 const purchased = this.items.filter(item => item.purchased).length;
                 return (purchased / this.items.length) * 100;
+            }
+            
+            calculateTotalCost() {
+                if (this.items.length === 0) return 0;
+                
+                let total = 0;
+                
+                this.items.forEach(item => {
+                    if (item.price) {
+                        const itemPrice = parseFloat(item.price);
+                        if (!isNaN(itemPrice)) {
+                            total += itemPrice;
+                        }
+                    }
+                });
+                
+                return total.toFixed(2);
             }
             
             updateItem(itemId, updatedData) {
@@ -851,6 +873,8 @@
                     cancelListModalBtn: document.getElementById('cancel-list-modal'),
                     closeListModalBtn: document.getElementById('close-list-modal'),
                     activeListName: document.getElementById('active-list-name'),
+                    totalCost: document.getElementById('total-cost'),
+                    totalCostValue: document.getElementById('total-cost-value'),
                     listActions: document.getElementById('list-actions'),
                     renameListBtn: document.getElementById('rename-list-btn'),
                     duplicateListBtn: document.getElementById('duplicate-list-btn'),
@@ -972,6 +996,10 @@
                     this.elements.noListSelected.style.display = 'none';
                     this.elements.listDetails.style.display = 'block';
                     
+                    // Show total cost
+                    this.updateTotalCost();
+                    this.elements.totalCost.style.display = 'block';
+                    
                     this.renderItems();
                     this.renderSaleItems();
                     this.renderFavoriteItems();
@@ -982,6 +1010,15 @@
                 }
                 
                 this.renderLists();
+            }
+            
+            updateTotalCost() {
+                const list = this.storageManager.getListById(this.activeListId);
+                
+                if (!list) return;
+                
+                const totalCost = list.calculateTotalCost();
+                this.elements.totalCostValue.textContent = totalCost;
             }
             
             renderItems() {
@@ -1150,6 +1187,7 @@
                 this.renderSaleItems();
                 this.renderFavoriteItems();
                 this.updateProgressBar();
+                // No need to update total cost as purchase status doesn't affect price
             }
             
             updateProgressBar() {
@@ -1269,6 +1307,7 @@
                     this.elements.newItemName.value = '';
                     this.renderItems();
                     this.updateProgressBar();
+                    this.updateTotalCost();
                     this.showNotification('Item added successfully');
                 }
             }
@@ -1369,6 +1408,7 @@
                 this.renderItems();
                 this.renderSaleItems();
                 this.renderFavoriteItems();
+                this.updateTotalCost();
             }
             
             deleteItem(itemId) {
@@ -1380,6 +1420,7 @@
                     this.renderSaleItems();
                     this.renderFavoriteItems();
                     this.updateProgressBar();
+                    this.updateTotalCost();
                     this.showNotification('Item deleted successfully');
                 }
             }
