@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optimizing AI Agent Use in Software Development</title>
+    <!-- Reveal.js CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.css">
+    <!-- Theme: Simple (or choose another like black, white, league, etc.) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/simple.min.css" id="theme">
+    <!-- Code Syntax Highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/styles/monokai.min.css">
+    <!-- Tailwind CSS for basic styling outside of Reveal.js defaults -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles to enhance presentation */
+        body {
+            font-family: 'Inter', sans-serif; /* Using Inter font as per instructions */
+        }
+        .reveal .slides section h1,
+        .reveal .slides section h2,
+        .reveal .slides section h3 {
+            margin-bottom: 20px;
+            text-align: left;
+            padding-left: 20px;
+        }
+        .reveal .slides section p,
+        .reveal .slides section ul,
+        .reveal .slides section ol {
+            text-align: left;
+            padding-left: 40px;
+            margin-bottom: 10px;
+        }
+        .reveal .slides section ul li,
+        .reveal .slides section ol li {
+            margin-bottom: 5px;
+        }
+        .reveal .slides section .source {
+            font-size: 0.7em;
+            text-align: right;
+            padding-right: 20px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="reveal">
+        <div class="slides">
+
+            <!-- Title Slide -->
+            <section>
+                <h3>AI Agent Use in Software Development</h3>
+                <p>Practical tips for leveraging coding agents</p>
+            </section>
+
+            <section>
+                <h2>The Paradigm Shift: Vibe Coding & Agentic AI</h2>
+            </section>
+
+            <section>
+                <h3>Vibe Coding Defined</h3>
+                <ul>
+                    <li>"An approach to producing software by using artificial intelligence (AI), where a person describes a problem in a few sentences as a prompt to a large language model (LLM) tuned for coding."</li>
+                    <li><strong>Shift:</strong> Programmer's role moves from manual coding to guiding, testing, and refining AI-generated code.</li>
+                </ul>
+                <p class="source"><em>Source: Ran Isenberg (quoting Wikipedia)</em></p>
+            </section>
+
+            <!-- Section 2: Core Principles -->
+
+            <section>
+                <h3>AI Mirrors Human Work Processes</h3>
+                <ul>
+                    <li><strong>Time:</strong> "More time, better results – Like humans, AI performs better when given time to think."</li>
+                    <li><strong>Tools:</strong> "Using tools – AI becomes more capable with better tools at its disposal — just like humans do."</li>
+                    <li><strong>Feedback:</strong> "Learning from feedback – AI improves through feedback loop, much like humans learn from experience."</li>
+                </ul>
+                <p class="source"><em>Source: Augment Code</em></p>
+            </section>
+
+            <section>
+                <h3>Detail & Specificity</h3>
+                <ul>
+                    <li>"Prompts should be detailed and not too short."</li>
+                    <li>"Be precise about the task. Include both functional and non-functional requirements."</li>
+                    <li>"Specificity leads to better alignment with expectations."</li>
+                </ul>
+                <p class="source"><em>Sources: Augment Code, Isenberg, Claude Code</em></p>
+            </section>
+
+            <section>
+                <h3>Provide Context (Crucial!)</h3>
+                <ul>
+                    <li><strong>Problem Domain:</strong> "Help the agent understand the overall problem domain and his expertise in this domain."</li>
+                    <li><strong>Reasoning & Constraints:</strong> "Explain not only the final goal but also reasoning behind, additional constraints, etc."</li>
+                    <li><strong>External Docs:</strong> Share "relevant documentation such as tickets, GitHub issues, or PRs."</li>
+                </ul>
+                <p class="source"><em>Sources: Isenberg, Augment Code</em></p>
+            </section>
+
+            <section>
+                <h3>Internal Context (MCP & CLAUDE.md)</h3>
+                <ul>
+                    <li><strong>MCP (Model Context Protocol):</strong> Integrate internal sources (Jira, Confluence, Notion, GitHub) via MCP servers.
+                        <ul>
+                            <li>"The tighter the integration, the smarter your agent becomes."</li>
+                        </ul>
+                    </li>
+                    <li><strong>CLAUDE.md:</strong> Files for automatic context pulling (e.g., bash commands, style guides, testing instructions).</li>
+                </ul>
+                <p class="source"><em>Sources: Isenberg, Claude Code</em></p>
+            </section>
+
+            <section>
+                <h3>Prompting Techniques</h3>
+                <ul>
+                    <li><strong>Define Persona:</strong> "Start by setting the stage." E.g., "You're a senior AWS Serverless Python developer..."</li>
+                    <li><strong>Ask for a Plan First:</strong> For complex tasks, "Before it starts coding, ask it to explain its plan."
+                    </li>
+                </ul>
+                <p class="source"><em>Sources: Augment Code, Isenberg, Claude Code</em></p>
+            </section>
+
+            <section>
+                <h2>Demo: Firebase Studio</h2>
+            </section>
+
+            <section>
+                <h2>Demo: Claude Code</h2>
+            </section>
+
+            <section>
+                <h2>Workflow Strategies & Best Practices</h2>
+            </section>
+
+            <section>
+                <h3>Break Down Complex Tasks</h3>
+                <ul>
+                    <li>"Break complex tasks into smaller, digestible pieces (one at a time)."</li>
+                    <li>"If the prompt gets too long... break it into smaller prompts that build upon the changes of the previous prompt." (Chained Prompting)</li>
+                </ul>
+                <p class="source"><em>Sources: Augment Code, Isenberg</em></p>
+            </section>
+
+            <section>
+                <h3>Iterative Development & Feedback Loops</h3>
+                <ul>
+                    <li><strong>Leverage Test Results:</strong> "Agent excels at iterating on test results and code execution output."
+                    <li>Ask agent to "add tests," "run them," and "parse the test output" to fix problems.</li>
+                    <li><strong>Visual Feedback:</strong> Provide "visual targets" (browser screenshots, mocks) and iterate until design matches.</li>
+                </ul>
+                <p class="source"><em>Sources: Augment Code, Isenberg, Claude Code</em></p>
+            </section>
+
+
+            <section>
+                <h3>
+                    Where do you want to focus your strengths? Where do you want to reduce toil?
+                </h3>
+                <p>Scott Hanselman</p>
+            </section>
+
+
+            <section>
+                <h3>Understanding What You Commit</h3>
+                <ul>
+                    <li>"Never ship code you don't fully understand."</li>
+                    <li>Always "review, refactor, and test everything it produces."</li>
+                </ul>
+                <p class="source"><em>Source: Ran Isenberg</em></p>
+            </section>
+
+            <section>
+                <h3>References</h3>
+                <ul>
+                    <li><a href="https://www.ranthebuilder.cloud/post/agentic-ai-prompting-best-practices-for-smarter-vibe-coding">Agentic AI Prompting: Best Practices for Smarter Vibe Coding</a></li>
+                    <li><a href="https://www.augmentcode.com/blog/best-practices-for-using-ai-coding-agents">Best practices for using AI coding Agents - Augment Code</a></li>
+                    <li><a href="https://www.anthropic.com/engineering/claude-code-best-practices">Claude Code: Best practices for agentic coding</a></li>
+                </ul>
+            </section>
+
+
+        </div>
+    </div>
+
+    <!-- Reveal.js JavaScript -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/markdown/markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/highlight/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/notes/notes.min.js"></script>
+
+    <script>
+        // Initialize Reveal.js
+        Reveal.initialize({
+            controls: true,
+            progress: true,
+            hash: true,
+            center: true,
+            transition: 'slide', // none/fade/slide/convex/concave/zoom
+
+            // Learn about plugins: https://revealjs.com/plugins/
+            plugins: [ RevealMarkdown, RevealHighlight, RevealNotes ]
+        });
+    </script>
+</body>
+</html>

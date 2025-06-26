@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+		<title>Getting Started with Google Gemini and Python</title>
+
+		<link rel="stylesheet" href="dist/reset.css">
+		<link rel="stylesheet" href="dist/reveal.css">
+		<link rel="stylesheet" href="dist/theme/moon.css">
+
+		<!-- Theme used for syntax highlighted code -->
+		<link rel="stylesheet" href="plugin/highlight/monokai.css">
+		
+		<style>
+			.highlight {
+				color: #42affa;
+				font-weight: bold;
+			}
+			.code-wrapper {
+				position: relative;
+				margin: 20px 0;
+			}
+			.gemini-bg {
+				background-color: rgba(66, 133, 244, 0.1);
+				border-radius: 10px;
+				padding: 10px;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="reveal">
+			<div class="slides">
+				<!-- Title Slide -->
+				<section data-transition="zoom">
+					<h1>Getting Started with Google Gemini</h1>
+					<h3>Using Python to Access Google's Advanced AI Model</h3>
+					<p><small>June 11, 2025</small></p>
+				</section>
+
+				<!-- Introduction -->
+				<section data-transition="fade-in convex-out">
+					<h2>What is <span class="highlight">Google Gemini</span>?</h2>
+					<ul>
+						<li class="fragment fade-up">Gemini is Google's most advanced AI model family</li>
+						<li class="fragment fade-up">Designed to be multimodal from the ground up</li>
+						<li class="fragment fade-up">Can understand and reason about text, images, audio, video, and code</li>
+						<li class="fragment fade-up">Available in multiple sizes: Ultra, Pro, and Nano</li>
+						<li class="fragment fade-up">Accessible via Google AI Studio or through API</li>
+					</ul>
+				</section>
+
+				<!-- Gemini Models -->
+				<section>
+					<section data-transition="convex">
+						<h2>Gemini Model Variants</h2>
+						<p>Google offers different Gemini models to suit various needs:</p>
+						<img src="https://via.placeholder.com/600x300?text=Gemini+Models" alt="Gemini Models Overview" class="fragment fade-in">
+					</section>
+					
+					<section data-transition="zoom">
+						<h2>Gemini Ultra</h2>
+						<ul>
+							<li>Google's most capable model</li>
+							<li>Optimized for highly complex tasks</li>
+							<li>Excels at reasoning, following instructions, coding, and creative tasks</li>
+							<li>Powers Gemini Advanced in Google AI Studio</li>
+						</ul>
+					</section>
+
+					<section data-transition="concave">
+						<h2>Gemini Pro</h2>
+						<ul>
+							<li>Balanced performance and efficiency</li>
+							<li>Designed for scaling across a wide range of tasks</li>
+							<li>Good for general-purpose use cases</li>
+							<li>Most commonly used model via API</li>
+						</ul>
+					</section>
+
+					<section data-transition="fade">
+						<h2>Gemini Nano</h2>
+						<ul>
+							<li>Efficiency-focused model for on-device applications</li>
+							<li>Optimized for mobile and edge devices</li>
+							<li>Powers on-device features in Android</li>
+							<li>Balance between performance and resource constraints</li>
+						</ul>
+					</section>
+				</section>
+
+				<!-- Setting Up -->
+				<section data-transition="slide" class="gemini-bg">
+					<h2>Setting Up Your Environment</h2>
+					<ol>
+						<li class="fragment">Create a Google AI Studio account</li>
+						<li class="fragment">Obtain API key from Google AI Platform</li>
+						<li class="fragment">Install the Google Generative AI Python library:
+							<pre><code class="python">pip install google-generativeai</code></pre>
+						</li>
+						<li class="fragment">Set up your Python environment</li>
+					</ol>
+				</section>
+
+				<!-- Basic Usage -->
+				<section data-transition="convex-in fade-out">
+					<h2>Basic Usage with Python</h2>
+					<div class="code-wrapper">
+						<pre><code class="python" data-trim data-line-numbers>
+import google.generativeai as genai
+
+# Configure API key
+genai.configure(api_key='YOUR_API_KEY')
+
+# Choose a model
+model = genai.GenerativeModel('gemini-pro')
+
+# Generate text from a prompt
+response = model.generate_content('Explain quantum computing in simple terms')
+
+print(response.text)
+						</code></pre>
+					</div>
+					<p class="fragment fade-in">This simple example shows how to generate text using Gemini Pro</p>
+				</section>
+
+				<!-- Multimodal Capabilities -->
+				<section data-transition="fade-in slide-out">
+					<h2>Multimodal Capabilities</h2>
+					<div class="code-wrapper">
+						<pre><code class="python" data-trim data-line-numbers>
+import google.generativeai as genai
+from IPython.display import Image
+import PIL.Image
+
+# Configure API key
+genai.configure(api_key='YOUR_API_KEY')
+
+# Load an image
+image = PIL.Image.open('path_to_image.jpg')
+
+# Create a multimodal model instance
+model = genai.GenerativeModel('gemini-pro-vision')
+
+# Generate content based on image and text prompt
+response = model.generate_content([
+    'Describe what you see in this image in detail',
+    image
+])
+
+print(response.text)
+						</code></pre>
+					</div>
+				</section>
+
+				<!-- Chat Functionality -->
+				<section data-transition="zoom">
+					<h2>Chat Conversations</h2>
+					<div class="code-wrapper">
+						<pre><code class="python" data-trim data-line-numbers>
+import google.generativeai as genai
+
+# Configure API key
+genai.configure(api_key='YOUR_API_KEY')
+
+# Initialize a chat model
+model = genai.GenerativeModel('gemini-pro')
+chat = model.start_chat(history=[])
+
+# First message
+response = chat.send_message('How do I build a recommendation system?')
+print(response.text)
+
+# Follow-up question
+response = chat.send_message('What algorithms are best for content-based filtering?')
+print(response.text)
+
+# Access chat history
+print(chat.history)
+						</code></pre>
+					</div>
+				</section>
+
+				<!-- Safety Settings -->
+				<section data-transition="concave">
+					<h2>Safety Settings & Parameters</h2>
+					<div class="code-wrapper">
+						<pre><code class="python" data-trim data-line-numbers="4-8|10-16">
+import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
+
+# Configure API key
+genai.configure(api_key='YOUR_API_KEY')
+
+# Create model with custom safety settings
+model = genai.GenerativeModel(
+    'gemini-pro',
+    safety_settings={
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+    }
+)
+
+# Generation parameters
+response = model.generate_content(
+    'Write a short story about AI',
+    generation_config={
+        'temperature': 0.7,
+        'top_p': 0.9,
+        'top_k': 40,
+        'max_output_tokens': 800,
+    }
+)
+						</code></pre>
+					</div>
+				</section>
+
+				<!-- Embeddings -->
+				<section data-transition="fade">
+					<h2>Working with Embeddings</h2>
+					<div class="code-wrapper">
+						<pre><code class="python" data-trim>
+import google.generativeai as genai
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Configure API key
+genai.configure(api_key='YOUR_API_KEY')
+
+# Get embedding model
+embedding_model = genai.get_embedding_model('models/embedding-001')
+
+# Generate embeddings for texts
+text1 = "Machine learning algorithms"
+text2 = "Deep learning neural networks"
+text3 = "Cooking recipes for pasta"
+
+embedding1 = embedding_model.embed_content(text1)
+embedding2 = embedding_model.embed_content(text2)
+embedding3 = embedding_model.embed_content(text3)
+
+# Compare similarities using cosine similarity
+e1 = np.array(embedding1.embedding)
+e2 = np.array(embedding2.embedding)
+e3 = np.array(embedding3.embedding)
+
+# Print similarities
+print(f"Similarity between text1 and text2: {cosine_similarity([e1], [e2])[0][0]:.4f}")
+print(f"Similarity between text1 and text3: {cosine_similarity([e1], [e3])[0][0]:.4f}")
+						</code></pre>
+					</div>
+				</section>
+
+				<!-- Function Calling -->
+				<section data-transition="convex" class="gemini-bg">
+					<h2>Function Calling</h2>
+					<div class="code-wrapper">
+						<pre><code class="python" data-trim data-line-numbers="5-21|23-28|30-37">
+import google.generativeai as genai
+import json
+
+# Configure API key
+genai.configure(api_key='YOUR_API_KEY')
+
+# Define a function schema
+weather_schema = {
+    "name": "get_weather",
+    "description": "Get the current weather for a location",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "location": {
+                "type": "string",
+                "description": "The city and state, e.g., 'San Francisco, CA'"
+            },
+            "unit": {
+                "type": "string", 
+                "enum": ["celsius", "fahrenheit"],
+                "description": "The temperature unit"
+            }
+        },
+        "required": ["location"]
+    }
+}
+
+# Create model with function calling capability
+model = genai.GenerativeModel(
+    'gemini-pro',
+    tools=[{"function_declarations": [weather_schema]}]
+)
+
+# Get response with function calling
+response = model.generate_content(
+    "What's the weather like in Boston right now?"
+)
+
+# Check if function call was attempted
+function_call = response.candidates[0].content.parts[0].function_call
+print(json.dumps(function_call.to_dict(), indent=2))
+
+# In real app, you would then call your actual weather API with these parameters
+						</code></pre>
+					</div>
+				</section>
+
+				<!-- Error Handling -->
+				<section data-transition="zoom">
+					<h2>Error Handling & Best Practices</h2>
+					<div class="code-wrapper">
+						<pre><code class="python" data-trim>
+import google.generativeai as genai
+import time
+
+# Configure API key
+genai.configure(api_key='YOUR_API_KEY')
+
+# Basic error handling
+def generate_with_retry(prompt, max_retries=3):
+    model = genai.GenerativeModel('gemini-pro')
+    retries = 0
+    
+    while retries < max_retries:
+        try:
+            response = model.generate_content(prompt)
+            return response.text
+        except genai.APIError as e:
+            if e.status_code == 429:  # Rate limit error
+                wait_time = min(2 ** retries, 60)  # Exponential backoff
+                print(f"Rate limit hit. Waiting {wait_time} seconds...")
+                time.sleep(wait_time)
+                retries += 1
+            elif e.status_code >= 500:  # Server error
+                print(f"Server error. Waiting before retry...")
+                time.sleep(5)
+                retries += 1
+            else:
+                # Other errors
+                print(f"Error: {e}")
+                break
+    
+    return "Failed to generate content after multiple attempts."
+
+# Example usage
+result = generate_with_retry("Explain how LLMs work")
+print(result)
+						</code></pre>
+					</div>
+				</section>
+
+				<!-- Practical Examples -->
+				<section>
+					<section data-transition="slide">
+						<h2>Practical Examples</h2>
+						<p>Real-world applications of Google Gemini with Python</p>
+					</section>
+					
+					<section data-transition="convex">
+						<h3>1. Content Summarization</h3>
+						<div class="code-wrapper">
+							<pre><code class="python" data-trim>
+import google.generativeai as genai
+
+genai.configure(api_key='YOUR_API_KEY')
+model = genai.GenerativeModel('gemini-pro')
+
+def summarize_text(text):
+    prompt = f"""
+    Please summarize the following text concisely while keeping the main points:
+    
+    {text}
+    """
+    response = model.generate_content(prompt)
+    return response.text
+
+# Example usage
+article = """
+[Long article text here...]
+"""
+summary = summarize_text(article)
+print(summary)
+							</code></pre>
+						</div>
+					</section>
+					
+					<section data-transition="fade">
+						<h3>2. Image Analysis Tool</h3>
+						<div class="code-wrapper">
+							<pre><code class="python" data-trim>
+import google.generativeai as genai
+import PIL.Image
+
+genai.configure(api_key='YOUR_API_KEY')
+model = genai.GenerativeModel('gemini-pro-vision')
+
+def analyze_image(image_path, analysis_type="general"):
+    image = PIL.Image.open(image_path)
+    
+    prompts = {
+        "general": "Describe what you see in this image in detail.",
+        "objects": "List all objects visible in this image.",
+        "text": "Extract and transcribe any text visible in this image.",
+        "sentiment": "Analyze the mood and sentiment conveyed in this image."
+    }
+    
+    prompt = prompts.get(analysis_type, prompts["general"])
+    response = model.generate_content([prompt, image])
+    
+    return response.text
+
+# Example
+result = analyze_image("path_to_image.jpg", "objects")
+print(result)
+							</code></pre>
+						</div>
+					</section>
+				</section>
+
+				<!-- Tips & Considerations -->
+				<section data-transition="convex-in fade-out" class="gemini-bg">
+					<h2>Tips & Considerations</h2>
+					<ul>
+						<li class="fragment fade-right">Be mindful of API quotas and rate limits</li>
+						<li class="fragment fade-right">Store API keys securely (environment variables, secrets manager)</li>
+						<li class="fragment fade-right">Use appropriate models for different tasks (cost vs. capability)</li>
+						<li class="fragment fade-right">Implement proper error handling and retries</li>
+						<li class="fragment fade-right">Be aware of context window limitations</li>
+						<li class="fragment fade-right">Consider implementing caching for common requests</li>
+						<li class="fragment fade-right">Always review AI-generated content for accuracy</li>
+					</ul>
+				</section>
+
+				<!-- Resources -->
+				<section data-transition="zoom">
+					<h2>Resources & Next Steps</h2>
+					<ul>
+						<li>Google AI Studio: <a href="https://ai.google.dev/">https://ai.google.dev/</a></li>
+						<li>Gemini API Documentation: <a href="https://ai.google.dev/docs">https://ai.google.dev/docs</a></li>
+						<li>Python SDK: <a href="https://github.com/google/generative-ai-python">github.com/google/generative-ai-python</a></li>
+						<li>Sample Applications: <a href="https://github.com/google/generative-ai-docs/tree/main/gemini-api-cookbook">Gemini API Cookbook</a></li>
+						<li>Community Forum: <a href="https://github.com/google/generative-ai-python/discussions">GitHub Discussions</a></li>
+					</ul>
+				</section>
+
+				<!-- QA -->
+				<section data-transition="fade" data-background-gradient="linear-gradient(to bottom, #4285f4, #000)">
+					<h2>Questions & Answers</h2>
+					<div style="text-align: center; padding-top: 40px;">
+						<p class="fragment fade-up">Thank you for attending!</p>
+						<p class="fragment fade-up"><small>For more information, visit <a href="https://ai.google.dev/">ai.google.dev</a></small></p>
+					</div>
+				</section>
+			</div>
+		</div>
+
+		<script src="dist/reveal.js"></script>
+		<script src="plugin/notes/notes.js"></script>
+		<script src="plugin/markdown/markdown.js"></script>
+		<script src="plugin/highlight/highlight.js"></script>
+		<script>
+			// More info about initialization & config:
+			// - https://revealjs.com/initialization/
+			// - https://revealjs.com/config/
+			Reveal.initialize({
+				hash: true,
+				// Add progress bar
+				progress: true,
+				// Enable slide numbers
+				slideNumber: true,
+				// Global transition
+				transition: 'slide', 
+				// Enable transitions on background slides
+				backgroundTransition: 'fade',
+				// Show controls
+				controls: true,
+				// Enable the slide overview mode
+				overview: true,
+				// Center vertical content
+				center: true,
+				// Fragment animations
+				fragments: true,
+				// Animate fragment appearances in sequential order
+				fragmentInURL: true,
+
+				// Learn about plugins: https://revealjs.com/plugins/
+				plugins: [ RevealMarkdown, RevealHighlight, RevealNotes ]
+			});
+		</script>
+	</body>
+</html>
